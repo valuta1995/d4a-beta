@@ -1,0 +1,17 @@
+numpy~=1.19.4
+scikit-learn~=0.23.2
+pykush~=0.3.0
+matplotlib~=3.3.3
+
+pyserial==3.5
+intervaltree==3.1.0
+capstone==4.0.2
+unicorn==1.0.2
+configparser~=5.0.1
+npyscreen==4.10.5
+pygdbmi==0.10.0.0
+parse==1.18.0
+PyLink==0.3.3
+setuptools>=51.0.0
+keystone-engine>=0.9.2
+posix-ipc>=1.0.5
