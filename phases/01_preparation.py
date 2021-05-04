@@ -7,7 +7,6 @@ from avatar2 import Avatar, ARM_CORTEX_M3, OpenOCDTarget
 def flash_board(firmware_path, openocd_config_path, work_dir_path):
     print("Phase 01 started")
     import time
-    time.sleep(10)
     avatar: Avatar = Avatar(arch=ARM_CORTEX_M3, output_directory=work_dir_path)
     target: OpenOCDTarget = avatar.add_target(OpenOCDTarget, openocd_script=openocd_config_path)
 

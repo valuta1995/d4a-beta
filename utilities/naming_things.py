@@ -7,9 +7,9 @@ PHASE_01_FIRMWARE_PREPARATION = \
 PHASE_02_INITIAL_RECORDING = \
     "02_recording"
 PHASE_03_INITIAL_ANALYSIS = \
-    "03_analysis"
+    "03_global_analysis"
 PHASE_04_PERIPHERAL_RECORDING = \
-    "04_peripheral_recording"
+    "04_recording_peripherals"
 PHASE_05_PERIPHERAL_ANALYSIS = \
     "05_peripheral_analysis"
 PHASE_06_REGISTER_RECORDING = \
@@ -28,12 +28,15 @@ MEMORY_SNAPSHOT_DIRECTORY = "snapshots"
 AVATAR_OUTPUT_DIRECTORY = "avatar_output"
 
 # File names
-BEFORE_DUMP_NAME = "anterior.bin"
-AFTER_DUMP_NAME = "posterior.bin"
-
 LAST_FLASH_MARKER = "last_flash"
 
+BEFORE_DUMP_NAME = "anterior.bin"
+AFTER_DUMP_NAME = "posterior.bin"
 EXIT_REASON_FILE = "exit_reason.txt"
+DMA_INFO_JSON = "dma_info.json"
+
+PERIPHERAL_CSV_NAME = "peripherals.csv"
+
 
 # Exit reason strings
 REASON_DEVIATION = "deviation_from_trace"
@@ -50,3 +53,5 @@ def setup_directory(base_path: str, phase_id: int) -> str:
     if not os.path.isdir(dir_path):
         raise Exception("Unable to create directory for phase %d" % phase_id)
     return dir_path
+
+

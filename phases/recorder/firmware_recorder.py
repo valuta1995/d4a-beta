@@ -6,8 +6,8 @@ from typing import Tuple, List, Dict, Optional
 from avatar2 import ARM_CORTEX_M3, Target
 
 from a2h import Avatar2Handler
-from utilities import naming_things, csv_append
-from .execution_trace import read_trace, ExecutionTrace, TraceEntry
+from utilities import naming_things, csv_append, go_go_gadget_ipython
+from . import ExecutionTrace, TraceEntry
 
 
 def recurse_has_loops(items: list, loop_items: list, amount: int) -> bool:
@@ -71,7 +71,8 @@ class FirmwareRecorder:
     step_counter: int
 
     shadow_realm: Dict[int, int]
-    shadow_banned_regions: List[Tuple[int, int]]
+    mocked_regions: List[Tuple[int, int]]
+    shimmed_regions: List[Tuple[int, int, int]]
 
     snapshot_region: Tuple[int, int]
     peripheral_region: Tuple[int, int]
@@ -88,7 +89,7 @@ class FirmwareRecorder:
     def __init__(
             self,
             openocd_cfg: str, mem_ram: Tuple[int, int], mem_peripheral: Tuple[int, int],
-            shadow_banned_regions: List[Tuple[int, int]],
+            mocked_regions: List[Tuple[int, int]], shimmed_regions: List[Tuple[int, int, int]],
             work_dir: str,
             original_trace_path: str = None,
             abort_grace_steps=0,
@@ -103,7 +104,8 @@ class FirmwareRecorder:
         :param openocd_cfg: Path to the OpenOCD configuration file for the board/chip under test
         :param mem_ram: (start, size) of the region of ram that might contain DMA target buffers
         :param mem_peripheral: (start, size) of the region of memory that contains the DMA controller)
-        :param shadow_banned_regions: A list of (start, size)s of regions where writes to HW are redirected
+        :param mocked_regions: A list of (start, size)s of regions where writes to HW are redirected
+        :param shimmed_regions: A list of (start, size, mock_value)s of regions where writes to HW are redirected
         :param work_dir: Directory to store data for the current run in.
 
         :param original_trace_path: Path to the 'clean' recording.csv
@@ -135,14 +137,16 @@ class FirmwareRecorder:
                 current_time.hour, current_time.minute, current_time.second
             ))
 
-        a2h = Avatar2Handler(openocd_cfg, mem_peripheral, avatar_output_directory, ARM_CORTEX_M3)
+        # TODO infer architecture or get architecture from parameters, as opposed to using hardcoded value
+        architecture = ARM_CORTEX_M3
+        a2h = Avatar2Handler(openocd_cfg, mem_peripheral, mem_ram, avatar_output_directory, architecture)
         a2h.set_mmf_callback(self.on_fault)
 
         if original_trace_path is not None:
-            original_trace = read_trace(original_trace_path)
+            original_trace = ExecutionTrace.from_csv(original_trace_path, dumps_dir=None)
         else:
             original_trace = None
-            if abort_after_deviation != -1:
+            if abort_after_deviation:
                 raise Exception("Cannot check deviation without a trace")
 
         # Store directory and file paths
@@ -161,7 +165,8 @@ class FirmwareRecorder:
 
         # Keep track of fake memory
         self.shadow_realm = dict()
-        self.shadow_banned_regions = shadow_banned_regions
+        self.mocked_regions = mocked_regions
+        self.shimmed_regions = shimmed_regions
 
         # Track the two interesting memory regions
         self.snapshot_region = mem_ram
@@ -186,14 +191,14 @@ class FirmwareRecorder:
 
     def test_for_loop(self) -> bool:
         for i in range(1, 1 + self.history.length // self.abort_after_loops):
-            search_part = self.history[:-i]
-            loop_part = self.history[-i:]
+            search_part = self.history.entries[:-i]
+            loop_part = self.history.entries[-i:]
             if recurse_has_loops(search_part, loop_part, self.abort_after_loops - 1):
                 return True
         return False
 
     def has_deviated(self) -> bool:
-        clean_trace_item = self.original_trace.get(self.history.length)
+        clean_trace_item = self.original_trace.get(self.history.length - 1)
         last_item = self.history.peek()
 
         if last_item.addr != clean_trace_item.addr or last_item.pc != clean_trace_item.pc:
@@ -214,7 +219,7 @@ class FirmwareRecorder:
 
     def test_abort_conditions(self, faulting_addr: int, faulting_pc: int):
         # First test the timed aborts, only if we're not already counting down.
-        if self.abort_step_timer != -1:
+        if self.abort_step_timer == -1:
             # First, check abort_after_deviation
             if self.abort_after_deviation and self.has_deviated():
                 self.write_log_reason_set_timer(
@@ -243,12 +248,13 @@ class FirmwareRecorder:
                     "Terminating after %d events; reached set PC 0x%X" % (self.history.length, self.abort_after_pc)
                 )
 
-        # Irrespective of the timeout, test for abort_after_iterations
-        if self.abort_after_iterations != -1 and self.history.length >= self.abort_after_iterations:
-            self.write_log_reason_set_timer(
-                naming_things.REASON_STEPS,
-                "Terminating after %d events; limit reached." % self.history.length
-            )
+            if self.abort_after_iterations != -1 and self.history.length >= self.abort_after_iterations:
+                self.write_log_reason_set_timer(
+                    naming_things.REASON_STEPS,
+                    "Terminating after %d events; limit reached." % self.history.length
+                )
+        else:
+            print("Aborting in %d steps" % self.abort_step_timer)
 
     def write_log_reason_set_timer(self, reason, message):
         with open(self.exit_reason_path, 'a') as exit_reason_file:
@@ -267,7 +273,7 @@ class FirmwareRecorder:
             self.a2h.target.log.info("MMF cause address is not in the peripheral region. Ignoring.")
             return True  # Successful, we just don't care
 
-        # TODO figure out how to abort_per_step_timeout
+        # DONE figure out how to abort_per_step_timeout
         # https://medium.com/@chaoren/how-to-timeout-in-python-726002bf2291
         # self.event_index += 1 is handled through appending to the history
 
@@ -289,22 +295,34 @@ class FirmwareRecorder:
         # Parse the instruction that caused the fault
         effect = self.a2h.get_instruction_effect(faulting_pc)
         accessed_addr = effect.compute_memory_address(self.a2h.target, context)
-        if accessed_addr is not faulting_addr:
+        if accessed_addr != faulting_addr:
             raise Exception("The instruction's computed accessed address does not match the fault information.")
 
         # Replay or spoof the memory operation that caused the fault
+        value_to_shim = self.should_be_shimmed(accessed_addr)
+        should_mock = self.should_be_mocked(accessed_addr)
         if effect.mode == 'str':
             value = effect.get_register_value(self.a2h.target, context)
             # Spoof or Replay store
-            if self.is_shadow_banned(accessed_addr):
+            if value_to_shim is not None:
                 self.shadow_realm[accessed_addr] = value
+                self.a2h.target.write_memory(accessed_addr, effect.size, value_to_shim)
+
+            elif should_mock:
+                self.shadow_realm[accessed_addr] = value
+
             else:
                 self.a2h.target.write_memory(accessed_addr, effect.size, value)
 
         elif effect.mode == 'ldr':
             # Spoof or Replay load
-            if self.is_shadow_banned(accessed_addr):
+            if value_to_shim is not None:
                 value = self.shadow_realm[accessed_addr]
+                # value = self.a2h.target.read_memory(accessed_addr, effect.size)
+
+            elif should_mock:
+                value = self.shadow_realm[accessed_addr]
+
             else:
                 value = self.a2h.target.read_memory(accessed_addr, effect.size)
             effect.set_register_value(self.a2h.target, context, value)
@@ -318,7 +336,7 @@ class FirmwareRecorder:
         self.a2h.write_context(stack_frame_location, context)
 
         # Move the actual PC to any BX, LR; instruction to exit the fault handler.
-        self.a2h.target.write_register(self.bx_lr_location)
+        self.a2h.target.write_register('pc', self.bx_lr_location)
 
         after_mem: Optional[bytes]
         mem_delta: Optional[List[int]]
@@ -326,20 +344,24 @@ class FirmwareRecorder:
             # time.sleep(1)
             snapshot_name = "%03d_%s" % (self.history.length, naming_things.AFTER_DUMP_NAME)
             after_mem = self.a2h.make_snapshot(self.snapshot_region, os.path.join(self.snapshot_dir, snapshot_name))
-            ignore_region = stack_frame_location - self.snapshot_region[0], len(context)
+            ignore_region = stack_frame_location - self.snapshot_region[0], 4 * len(context)
             mem_delta = calculate_memory_delta(before_mem, after_mem, ignore_region)
         else:
             mem_delta = None
 
         entry = TraceEntry(effect.mode, faulting_pc, value, faulting_addr, mem_delta)
-        self.log_entry(entry)
+        # Side effect, entry is now indexed properly
         self.history.append(entry)
+        self.log_entry(entry, stack_frame_location)
+
         self.test_abort_conditions(faulting_addr, faulting_pc)
 
         return True  # Successful
 
     def start(self):
         self.stopped = False
+
+        # go_go_gadget_ipython(self.a2h.target, {'a2h': self.a2h})
 
         while not self.stopped:
             # Count the current steps
@@ -354,19 +376,46 @@ class FirmwareRecorder:
                 self.stopped = True
                 self.append_exit_reason("Abort step timer ran out.")
 
-            if self.step_counter >= self.abort_after_iterations:
-                self.stopped = True
-                self.append_exit_reason("Stopped after %d steps." % self.abort_after_iterations)
+            # if self.step_counter >= self.abort_after_iterations:
+            #     self.stopped = True
+            #     self.append_exit_reason("Stopped after %d steps." % self.abort_after_iterations)
 
-            self.a2h.continue_and_wait()
+            # print("Starting at %d" % self.history.length)
+            # if self.history.length >= 205:
+            #     print("\n\n======================[ %d ]======================\n" % self.history.length)
+            #     go_go_gadget_ipython(self.a2h.target, {'a2h': self.a2h})
+            # else:
+            #     self.a2h.continue_and_wait()
+            # print("   Finished %d\n\n" % self.history.length)
+
+            if self.abort_per_step_timeout > -1:
+                try:
+                    self.a2h.continue_and_wait(timeout=self.abort_per_step_timeout)
+                except TimeoutError:
+                    self.stopped = True
+                    self.append_exit_reason("Step took more than %d seconds." % self.abort_per_step_timeout)
+            else:
+                self.a2h.continue_and_wait()
 
         self.a2h.target.log.info("Firmware_recorder.py:start() has finished.")
 
-    def is_shadow_banned(self, accessed_addr):
-        for region in self.shadow_banned_regions:
+    def should_be_mocked(self, accessed_addr) -> bool:
+        for region in self.mocked_regions:
+            if region[0] < 0 or region[1] <= 0:
+                print("Ignoring mocked region at %d of size %d" % (region[0], region[1]))
+                continue
             if region[0] <= accessed_addr < sum(region):
                 return True
         return False
 
-    def log_entry(self, entry: TraceEntry):
-        csv_append(self.work_dir, entry.index, entry.instr, entry.pc, entry.value, entry.addr, entry.mem_delta)
+    def should_be_shimmed(self, accessed_addr) -> Optional[int]:
+        for region in self.shimmed_regions:
+            if region[0] < 0 or region[1] <= 0:
+                print("Ignoring shimmed region at %d of size %d" % (region[0], region[1]))
+                continue
+            if region[0] <= accessed_addr < sum(region):
+                return region[2]
+        return None
+
+    def log_entry(self, entry: TraceEntry, sp):
+        csv_append(self.work_dir, entry.index, entry.instr, entry.pc, entry.value, entry.addr, entry.mem_delta, sp)

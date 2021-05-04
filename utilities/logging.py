@@ -7,8 +7,8 @@ RECORDING_CSV_HUMAN = "recording_hr.csv"
 RECORDING_CSV_HEADER = "index, instruction, pc, value, address, diffs\n"
 RECORDING_CSV_FORMAT = "%d, %s, %d, %d, %d, %d\n"
 
-RECORDING_CSV_HUMAN_FORMAT = "%8s, %12s, %16s, %16s, %16s, %8s\n"
-RECORDING_CSV_HUMAN_HEADER = "index   , instruction , pc               , value           , address         , diffs   \n"
+RECORDING_CSV_HUMAN_FORMAT = "%6s, %12s, %12s, %12s, %12s, %6s, %s\n"
+RECORDING_CSV_HUMAN_HEADER = "index , instruction , pc          , value       , address     , diffs ,sp\n"
 
 
 def csv_reset(base_path: str):
@@ -22,7 +22,7 @@ def csv_reset(base_path: str):
 
 
 def csv_append(
-        base_path: str, index: int, instruction: str, pc: int, value: int, address: int, mem_delta: Optional[List[int]]
+        base_path: str, index: int, instruction: str, pc: int, value: int, address: int, mem_delta: Optional[List[int]], sp: int
 ):
     # TODO how to incorporate mem_delta
     regular = path.join(base_path, RECORDING_CSV)
@@ -38,5 +38,6 @@ def csv_append(
             "0x%08X" % pc,
             "0x%X" % value,
             "0x%08X" % address,
-            "None" if mem_delta is None else "%d" % len(mem_delta)
+            "None" if mem_delta is None else "%d: %s" % (len(mem_delta), mem_delta),
+            "0x%08X" % sp
         ))

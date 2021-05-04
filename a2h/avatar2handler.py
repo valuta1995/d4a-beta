@@ -4,6 +4,7 @@ from avatar2 import OpenOCDTarget, Avatar, ARM_CORTEX_M3, Target
 from avatar2.plugins.mmf_dispatcher import MemFaultDispatcher
 from capstone import CsInsn
 
+from utilities import TimeOut
 from . import InstructionEffect
 
 
@@ -63,6 +64,7 @@ class Avatar2Handler:
         # noinspection PyUnresolvedReferences
         self.dispatcher = self.target.mmf_dispatcher
 
+        # TODO call this from downstream of a2h?
         self.force_enable_mpu(self.region_protect)
 
         self.dispatcher.late_init()
@@ -113,10 +115,38 @@ class Avatar2Handler:
             return bin_file.read()
 
     def get_stack_frame_location(self, offset=0) -> int:
-        if self.target.read_register('lr') == 0xFFFFFFFD:
-            sp = self.target.read_register("psp")
-        else:
-            sp = self.target.read_register("msp")
+        sp = None
+        lr_value = self.target.read_register('lr')
+        msp_value = self.target.read_register('msp')
+        psp_value = self.target.read_register('psp')
+
+        if lr_value == 0xFFFFFFF1:
+            # Handler mode MSP
+            sp = msp_value
+
+        elif lr_value == 0xFFFFFFF9:
+            # Thread mode MSP
+            sp = msp_value
+
+        elif lr_value == 0xFFFFFFFD:  # Expected
+            # Thread mode PSP
+            sp = psp_value
+
+        elif lr_value == 0xFFFFFFE1:
+            # Handler mode MSP (FP)
+            sp = msp_value
+            print("FP detected")
+
+        elif lr_value == 0xFFFFFFE9:
+            # Thread mode MSP (FP)
+            sp = msp_value
+            print("FP detected")
+
+        elif lr_value == 0xFFFFFFED:
+            # Thread mode PSP (FP)
+            sp = psp_value
+            print("FP detected")
+
         return sp + offset
 
     def read_context(self, stack_frame_location: int) -> Dict[str, int]:
@@ -133,10 +163,16 @@ class Avatar2Handler:
         effect = InstructionEffect.from_cs_insn(instruction)
         return effect
 
-    def continue_and_wait(self):
+    def continue_and_wait(self, timeout: Optional[int] = None):
         # TODO check if timeout needs to be handled here?
-        self.target.cont()
-        self.target.wait()
+        if timeout is not None:
+            # print("\n\n\t\tTHIS FUNCTIONALITY IS UNTESTED, PLEASE REPORT BUGS\n\n\n")
+            with TimeOut(timeout):
+                self.target.cont()
+                self.target.wait()
+        else:
+            self.target.cont()
+            self.target.wait()
 
     def force_enable_mpu(self, target_region: Tuple[int, int], allow_ldr=False):
         # Disable the MPU so we can perform 'maintenance'
@@ -144,6 +180,14 @@ class Avatar2Handler:
 
         # Select the last MPU slot
         # TODO look for unused slots instead of grabbing the last one
+        tr = self.arch.MpuTR
+        number_of_regions = (tr.read(self.target) & tr.MASK_DREGION) >> tr.SHIFT_DREGION
+        if number_of_regions != 0x8:
+            self.target.log.error("Unsupported amount of regions (%d)." % number_of_regions)
+            exit(-1)
+        else:
+            self.target.log.error("Supported amount of regions (%d)." % number_of_regions)
+
         self.arch.MpuRNR.write(self.target, 7)
 
         # Set the base to the region we want to watch

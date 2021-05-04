@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import os
 import signal
+import subprocess
 import time
 from subprocess import Popen
 from typing import Callable, Tuple, Dict, List
@@ -72,8 +73,16 @@ class Controller:
 
         for name, process in self.living_processes.items():
             if process.poll():
-                print("Forcibly killing `%s`" % name)
+                print("\tForcibly killing `%s`" % name)
                 process.kill()
+
+        ps_proc = Popen(['ps', '-A'], stdout=subprocess.PIPE)
+        out, err = ps_proc.communicate()
+        for line in out.splitlines():
+            if b'openocd' in line:
+                print("Found an openocd process, killing it.")
+                pid = int(line.split(None, 1)[0])
+                os.kill(pid, signal.SIGKILL)
 
         print("Children killed, halting.")
         exit(1)
@@ -106,6 +115,7 @@ class Controller:
     @property
     def phase_07_directory(self) -> str:
         return naming_things.setup_directory(self.work_dir, 7)
+
     # endregion
 
     def device_needs_flashing(self):
@@ -151,15 +161,37 @@ class Controller:
 
     def analyze(self):
         self.run_phase([
-            'python', './phases/03_analysis.py',
+            'python', './phases/03_global_analysis.py',
             self.phase_02_directory,
             "%d" % self.ram_region[0],
             "%d" % self.epsilon,
             self.phase_03_directory,
         ])
 
+    def record_peripherals(self):
+        self.run_phase([
+            'python', './phases/04_recording_peripherals.py',
+            self.phase_02_directory,
+            self.phase_03_directory,
+            self.config_path,
+            '%d' % self.ram_region[0], '%d' % self.ram_region[1],
+            '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
+            self.phase_04_directory,
+            "--grace", '%d' % 32,
+        ])
+
+    def analyze_peripherals(self):
+        self.run_phase([
+            'python', './phases/05_peripheral_analysis.py',
+            self.phase_02_directory,
+            self.phase_03_directory,
+            self.phase_04_directory,
+            "%d" % self.ram_region[0],
+            self.phase_05_directory,
+        ])
+
     def start(self, skip_to: int = 0):
-        if skip_to <= 1 or self.device_needs_flashing():
+        if skip_to <= 1 and self.device_needs_flashing():
             self.flash_firmware()
 
         if skip_to <= 2:
@@ -168,8 +200,12 @@ class Controller:
         if skip_to <= 3:
             self.analyze()
 
-        print("Sleeping for test purposes")
-        time.sleep(10)
+        if skip_to <= 4:
+            self.record_peripherals()
+            self.record_addr_size()
+
+        if skip_to <= 5:
+            self.analyze_peripherals()
 
 
 # noinspection DuplicatedCode
@@ -220,7 +256,7 @@ def main():
         work_dir=work_dir,
         epsilon=epsilon,
     )
-    controller.start()
+    controller.start(skip_to=0)
 
 
 # Press the green button in the gutter to run the script.
