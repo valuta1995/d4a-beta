@@ -1,4 +1,5 @@
 import csv
+import json
 import os.path
 from typing import List, Optional, Dict, Tuple
 
@@ -50,13 +51,26 @@ class TraceEntry:
         pc = int(entry_dict['pc'])
         value = int(entry_dict['value'])
         addr = int(entry_dict['address'])
-        num_deltas = int(entry_dict['diffs'])
+        if isinstance(entry_dict['diffs'], list):
+            num_deltas = len(entry_dict['diffs'])
+        else:
+            num_deltas = int(entry_dict['diffs'])
+
+        if 'ignored' in entry_dict:
+            ignore_diffs_str = entry_dict['ignored']
+            if ignore_diffs_str == 'None':
+                ignore_diffs = None
+            else:
+                ignore_diffs = json.loads(ignore_diffs_str)
+        else:
+            ignore_diffs = None
 
         if memory_dumps_dir is not None:
             before_file = os.path.join(memory_dumps_dir, "%03d_%s" % (index, BEFORE_DUMP_NAME))
             after_file = os.path.join(memory_dumps_dir, "%03d_%s" % (index, AFTER_DUMP_NAME))
 
             mem_delta = get_diffs(before_file, after_file)
+            mem_delta = [x for x in mem_delta if x[0] not in ignore_diffs]
             if num_deltas != len(mem_delta):
                 raise Exception("Mismatch in diffs")
 
@@ -130,7 +144,7 @@ class ExecutionTrace:
     def from_csv(cls, recording_csv: str, dumps_dir: Optional[str]) -> 'ExecutionTrace':
         et: ExecutionTrace = ExecutionTrace()
         with open(recording_csv, 'r', newline='') as csv_file:
-            reader = csv.reader(csv_file, delimiter=',', quotechar='"')
+            reader = csv.reader(csv_file, quotechar='"', delimiter=',', skipinitialspace=True)
             header = [x.strip() for x in next(reader)]
             if not check_header_match(header):
                 raise Exception("Invalid input file format for %s" % recording_csv)

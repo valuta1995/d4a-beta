@@ -3,39 +3,10 @@ import hashlib
 import os
 import signal
 import subprocess
-import time
 from subprocess import Popen
-from typing import Callable, Tuple, Dict, List
+from typing import Tuple, Dict, List
 
 from utilities import auto_int, naming_things, csv_reset
-
-
-def get_restart_function() -> Callable:
-    def restart_request():
-        input("Disconnect and reconnect the device under test and hit [enter] to continue.")
-
-    try:  # Try to test import
-        from pykush.pykush import YKUSH, YKUSHNotFound
-
-        try:  # Try to open YKUSH device
-            ykush = YKUSH()
-
-            def restart_ykush():
-                ykush.set_allports_state_down()
-                time.sleep(1.5)
-                ykush.set_allports_state_up()
-                time.sleep(3.0)
-
-            return restart_ykush
-
-        except YKUSHNotFound:
-            return restart_request
-
-    except ImportError:
-        return restart_request
-
-
-restart_connected_devices: Callable[[], None] = get_restart_function()
 
 
 class Controller:
@@ -116,6 +87,10 @@ class Controller:
     def phase_07_directory(self) -> str:
         return naming_things.setup_directory(self.work_dir, 7)
 
+    @property
+    def phase_08_directory(self) -> str:
+        return naming_things.setup_directory(self.work_dir, 8)
+
     # endregion
 
     def device_needs_flashing(self):
@@ -140,7 +115,6 @@ class Controller:
         del self.living_processes[args[1]]
 
     def flash_firmware(self):
-        restart_connected_devices()
         self.run_phase([
             'python', './phases/01_preparation.py',
             self.firmware_path,
@@ -149,7 +123,6 @@ class Controller:
         ])
 
     def record(self):
-        restart_connected_devices()
         csv_reset(self.phase_02_directory)
         self.run_phase([
             'python', './phases/02_recording.py',
@@ -168,9 +141,21 @@ class Controller:
             self.phase_03_directory,
         ])
 
+    def record_addr_size(self):
+        self.run_phase([
+            'python', './phases/04_recording_addr_size.py',
+            self.phase_02_directory,
+            self.phase_03_directory,
+            self.config_path,
+            '%d' % self.ram_region[0], '%d' % self.ram_region[1],
+            '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
+            self.phase_04_directory,
+            "--grace", '%d' % 32,
+        ])
+
     def record_peripherals(self):
         self.run_phase([
-            'python', './phases/04_recording_peripherals.py',
+            'python', './phases/05_recording_peripherals.py',
             self.phase_02_directory,
             self.phase_03_directory,
             self.config_path,
@@ -182,7 +167,7 @@ class Controller:
 
     def analyze_peripherals(self):
         self.run_phase([
-            'python', './phases/05_peripheral_analysis.py',
+            'python', './phases/06_peripheral_analysis.py',
             self.phase_02_directory,
             self.phase_03_directory,
             self.phase_04_directory,
@@ -190,21 +175,23 @@ class Controller:
             self.phase_05_directory,
         ])
 
-    def start(self, skip_to: int = 0):
-        if skip_to <= 1 and self.device_needs_flashing():
+    def start(self, skip_to: int = 0, stop_after: int = 65535):
+        if skip_to <= 1 <= stop_after and self.device_needs_flashing():
             self.flash_firmware()
 
-        if skip_to <= 2:
+        if skip_to <= 2 <= stop_after:
             self.record()
 
-        if skip_to <= 3:
+        if skip_to <= 3 <= stop_after:
             self.analyze()
 
-        if skip_to <= 4:
-            self.record_peripherals()
+        if skip_to <= 4 <= stop_after:
             self.record_addr_size()
 
-        if skip_to <= 5:
+        if skip_to <= 5 <= stop_after:
+            self.record_peripherals()
+
+        if skip_to <= 6 <= stop_after:
             self.analyze_peripherals()
 
 
@@ -256,7 +243,7 @@ def main():
         work_dir=work_dir,
         epsilon=epsilon,
     )
-    controller.start(skip_to=0)
+    controller.start(skip_to=4, stop_after=4)
 
 
 # Press the green button in the gutter to run the script.

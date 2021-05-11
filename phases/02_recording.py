@@ -3,7 +3,7 @@ import os
 from typing import Tuple
 
 from phases.recorder import FirmwareRecorder
-from utilities import auto_int
+from utilities import auto_int, restart_connected_devices
 
 
 def record_firmware(openocd_cfg: str, mem_ram: Tuple[int, int], mem_peripheral: Tuple[int, int], work_dir: str,
@@ -22,7 +22,8 @@ def record_firmware(openocd_cfg: str, mem_ram: Tuple[int, int], mem_peripheral: 
         abort_at_step=max_steps,
         abort_per_step_timeout=timeout
     )
-
+    # TODO re-enable
+    # recorder.poison()
     recorder.start()
 
 
@@ -66,7 +67,9 @@ def main():
     timeout: int = args.timeout
     max_steps: int = args.max_steps
     grace_steps: int = args.grace_steps
-    solve_the_halting_problem: int = args.abort_loops
+    solve_the_halting_problem: int = args.solve_the_halting_problem
+
+    restart_connected_devices()
 
     record_firmware(openocd_config_path, mem_ram, mem_peripheral, work_dir_path, timeout, max_steps, grace_steps,
                     solve_the_halting_problem)

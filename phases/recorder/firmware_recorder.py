@@ -1,4 +1,5 @@
 import os
+import random
 import time
 from datetime import datetime
 from typing import Tuple, List, Dict, Optional
@@ -31,22 +32,23 @@ def recurse_has_loops(items: list, loop_items: list, amount: int) -> bool:
         return False
 
 
-def calculate_memory_delta(before_mem: bytes, after_mem: bytes, ignore: Tuple[int, int]) -> List[int]:
+def calculate_memory_delta(before_mem: bytes, after_mem: bytes, ignore: Tuple[int, int]) -> Tuple[List[int], List[int]]:
     """
-
     :param before_mem: State of the memory before our changes
     :param after_mem: State of the memory after our changes (and a small delay)
     :param ignore: Section of memory to ignore
     :return:
     """
     diffs = []
+    ignored = []
     for index, pair in enumerate(zip(before_mem, after_mem)):
         if pair[0] != pair[1]:
-            if not ignore[0] <= index < sum(ignore):
+            if not ignore[0] <= index < ignore[0] + ignore[1]:
                 diffs.append(index)
             else:
+                ignored.append(index)
                 print("Ignored a diff at 0x%08X due to ignore region." % index)
-    return diffs
+    return diffs, ignored
 
 
 def find_bx_lr(target: Target):
@@ -269,7 +271,7 @@ class FirmwareRecorder:
         if faulting_addr is None:
             self.a2h.target.log.error("MMF cause address is stale, this can cause skipped steps.")
             return False  # Unsuccessful
-        if not self.peripheral_region[0] <= faulting_addr < sum(self.peripheral_region):
+        if not self.peripheral_region[0] <= faulting_addr < self.peripheral_region[0] + self.peripheral_region[1]:
             self.a2h.target.log.info("MMF cause address is not in the peripheral region. Ignoring.")
             return True  # Successful, we just don't care
 
@@ -301,6 +303,8 @@ class FirmwareRecorder:
         # Replay or spoof the memory operation that caused the fault
         value_to_shim = self.should_be_shimmed(accessed_addr)
         should_mock = self.should_be_mocked(accessed_addr)
+        if should_mock or value_to_shim is not None:
+            print("\t\t\t\t\t\t\t\t\tRunning alternate mode")
         if effect.mode == 'str':
             value = effect.get_register_value(self.a2h.target, context)
             # Spoof or Replay store
@@ -317,11 +321,18 @@ class FirmwareRecorder:
         elif effect.mode == 'ldr':
             # Spoof or Replay load
             if value_to_shim is not None:
-                value = self.shadow_realm[accessed_addr]
-                # value = self.a2h.target.read_memory(accessed_addr, effect.size)
+                if accessed_addr in self.shadow_realm:
+                    value = self.shadow_realm[accessed_addr]
+                else:
+                    self.a2h.avatar.log.warn("Substituting hardware-read value as no shadow value is present.")
+                    value = self.a2h.target.read_memory(accessed_addr, effect.size)
 
             elif should_mock:
-                value = self.shadow_realm[accessed_addr]
+                if accessed_addr in self.shadow_realm:
+                    value = self.shadow_realm[accessed_addr]
+                else:
+                    self.a2h.avatar.log.warn("Substituting hardware-read value as no shadow value is present.")
+                    value = self.a2h.target.read_memory(accessed_addr, effect.size)
 
             else:
                 value = self.a2h.target.read_memory(accessed_addr, effect.size)
@@ -345,14 +356,15 @@ class FirmwareRecorder:
             snapshot_name = "%03d_%s" % (self.history.length, naming_things.AFTER_DUMP_NAME)
             after_mem = self.a2h.make_snapshot(self.snapshot_region, os.path.join(self.snapshot_dir, snapshot_name))
             ignore_region = stack_frame_location - self.snapshot_region[0], 4 * len(context)
-            mem_delta = calculate_memory_delta(before_mem, after_mem, ignore_region)
+            mem_delta, ignored = calculate_memory_delta(before_mem, after_mem, ignore_region)
         else:
             mem_delta = None
+            ignored = None
 
         entry = TraceEntry(effect.mode, faulting_pc, value, faulting_addr, mem_delta)
         # Side effect, entry is now indexed properly
         self.history.append(entry)
-        self.log_entry(entry, stack_frame_location)
+        self.log_entry(entry, ignored)
 
         self.test_abort_conditions(faulting_addr, faulting_pc)
 
@@ -404,7 +416,7 @@ class FirmwareRecorder:
             if region[0] < 0 or region[1] <= 0:
                 print("Ignoring mocked region at %d of size %d" % (region[0], region[1]))
                 continue
-            if region[0] <= accessed_addr < sum(region):
+            if region[0] <= accessed_addr < region[0] + region[1]:
                 return True
         return False
 
@@ -413,9 +425,25 @@ class FirmwareRecorder:
             if region[0] < 0 or region[1] <= 0:
                 print("Ignoring shimmed region at %d of size %d" % (region[0], region[1]))
                 continue
-            if region[0] <= accessed_addr < sum(region):
+            if region[0] <= accessed_addr < region[0] + region[1]:
                 return region[2]
         return None
 
-    def log_entry(self, entry: TraceEntry, sp):
-        csv_append(self.work_dir, entry.index, entry.instr, entry.pc, entry.value, entry.addr, entry.mem_delta, sp)
+    def log_entry(self, entry: TraceEntry, ignores):
+        csv_append(self.work_dir, entry.index, entry.instr, entry.pc, entry.value, entry.addr, entry.mem_delta, ignores)
+
+    def poison(self):
+        # stuff = random.randbytes(self.snapshot_region[1])
+        # TODO speed this up (way too slow)
+        print("Starting memory poisoning")
+        print("  0.0%", end='')
+        last = 0
+        for i in range(self.snapshot_region[1]):
+            percentage = (100 * i / self.snapshot_region[1])
+            if percentage > last + 0.25:
+                print("\b\b\b\b\b\b%5.1f%%" % percentage, end='')
+                last = percentage
+
+            stuff = random.randint(0, 255)
+            self.a2h.target.write_memory(self.snapshot_region[0] + i, 1, stuff)
+        print("\nMemory poisoning done")

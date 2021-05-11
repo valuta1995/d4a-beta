@@ -42,6 +42,8 @@ def main():
 
     parser.add_argument('work_dir', type=str, help="Working directory.")
 
+    parser.add_argument('--poison', help="Fill the ram region with garbage", action='store_true')
+
     args = parser.parse_args()
 
     openocd_config_path: str = args.openocd_cfg
@@ -60,7 +62,7 @@ def main():
     mocked_regions = json.loads(args.shadow_ban_json)
     mocked_regions = [(x[0], x[1]) for x in mocked_regions]
 
-    shimmed_regions = json.loads(args.shim_json)
+    shimmed_regions = json.loads(args.shim_value_json)
     shimmed_regions = [(x[0], x[1], x[2]) for x in shimmed_regions]
 
     original_trace_path = None if args.original_trace_path == "None" else args.original_trace_path
@@ -76,6 +78,11 @@ def main():
         abort_at_step=args.abort_at_step,
         abort_per_step_timeout=args.abort_per_step_timeout
     )
+
+    if args.poison:
+        # TODO re-enable
+        # recorder.poison()
+        pass
 
     recorder.start()
 

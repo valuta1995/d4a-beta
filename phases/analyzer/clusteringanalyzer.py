@@ -1,6 +1,6 @@
 import json
 import os.path
-from typing import Optional
+from typing import Optional, List
 
 from phases.analyzer.peripheral_row import PeripheralRow, Peripheral
 from phases.recorder import ExecutionTrace, TraceEntry
@@ -49,21 +49,25 @@ class ClusteringAnalyzer:
             first_diff_offset = first_diff[0]
 
             dma_region_base = first_diff_offset + self.ram_base
-            set_base_instruction = self.find_set_base_instruction(dma_region_base, triggering_instruction.index)
-            if set_base_instruction is None:
+            set_base_candidates = self.find_set_base_candidates(dma_region_base, triggering_instruction.index)
+            if len(set_base_candidates) == 0:
                 raise Exception("Unable to find instruction responsible for the base.")
 
             last_diff = diffs_at_trigger[-1]
             last_diff_offset = last_diff[0]
 
             dma_region_size = 1 + (last_diff_offset - first_diff_offset)
-            set_size_instruction = self.find_set_size_instruction(dma_region_size, triggering_instruction.index)
+            set_size_candidates = self.find_set_size_instruction(dma_region_size, triggering_instruction.index)
+            if len(set_size_candidates) == 0:
+                raise Exception("Unable to find instruction responsible for the base.")
 
             with open(os.path.join(self.work_dir, naming_things.DMA_INFO_JSON), mode='w') as json_file:
                 json.dump({
                     "start_instruction": TraceEntry.to_dict(triggering_instruction),
-                    "set_addr_instruction": TraceEntry.to_dict(set_base_instruction),
-                    "set_size_instruction": TraceEntry.to_dict(set_size_instruction),
+                    "set_addr_instruction": TraceEntry.to_dict(set_base_candidates[-1]),
+                    "set_addr_alternatives": [TraceEntry.to_dict(x) for x in set_base_candidates],
+                    "set_size_instruction": TraceEntry.to_dict(set_size_candidates[-1]),
+                    "set_size_alternatives": [TraceEntry.to_dict(x) for x in set_size_candidates],
                     "dma_region_start": dma_region_base,
                     "dma_region_size": dma_region_size,
                 }, json_file, indent=4, sort_keys=True)
@@ -117,9 +121,9 @@ class ClusteringAnalyzer:
                 candidate = entry
         return candidate
 
-    def find_set_base_instruction(self, dma_region_base: int, index_limit: int) -> Optional[TraceEntry]:
+    def find_set_base_candidates(self, dma_region_base: int, index_limit: int) -> List[TraceEntry]:
         entry: TraceEntry
-        latest_matching_entry: Optional[TraceEntry] = None
+        hard_matches: List[TraceEntry] = []
         for entry in self.entries.entries:
             # Only instructions before the start of DMA can affect it
             if entry.index > index_limit:
@@ -128,14 +132,15 @@ class ClusteringAnalyzer:
             # TODO soft match heuristics
             # TODO proxied locations
             if entry.value == dma_region_base:
-                latest_matching_entry = entry
-        return latest_matching_entry
+                hard_matches.append(entry)
+        return hard_matches
 
-    def find_set_size_instruction(self, dma_region_size: int, index_limit: int):
+    def find_set_size_instruction(self, dma_region_size: int, index_limit: int) -> List[TraceEntry]:
         size_candidates = [dma_region_size, dma_region_size // 2, dma_region_size // 4]
+        size_candidates = [x for x in size_candidates if x > 0]
 
         entry: TraceEntry
-        latest_match: Optional[TraceEntry] = None
+        hard_matches: List[TraceEntry] = []
         for entry in self.entries.entries:
             # Only instruction before the start of DMA can affect the DMA operation
             if entry.index > index_limit:
@@ -144,6 +149,6 @@ class ClusteringAnalyzer:
             # TODO soft(er) match heuristics
             # TODO proxied values
             if entry.value in size_candidates:
-                latest_match = entry
+                hard_matches.append(entry)
 
-        return latest_match
+        return hard_matches

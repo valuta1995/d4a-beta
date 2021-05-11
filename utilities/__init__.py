@@ -3,3 +3,4 @@ from .naming_things import setup_directory
 from .logging import csv_append, csv_reset
 from .ipython_tool import go_go_gadget_ipython
 from .timeout import TimeOut
+from .ykush_helper import restart_connected_devices

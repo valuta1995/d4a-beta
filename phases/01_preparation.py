@@ -3,10 +3,11 @@ import os
 
 from avatar2 import Avatar, ARM_CORTEX_M3, OpenOCDTarget
 
+from utilities import restart_connected_devices
+
 
 def flash_board(firmware_path, openocd_config_path, work_dir_path):
     print("Phase 01 started")
-    import time
     avatar: Avatar = Avatar(arch=ARM_CORTEX_M3, output_directory=work_dir_path)
     target: OpenOCDTarget = avatar.add_target(OpenOCDTarget, openocd_script=openocd_config_path)
 
@@ -46,6 +47,7 @@ def main():
         print("Working directory is not available")
         exit(1)
 
+    restart_connected_devices()
     flash_board(firmware_path, openocd_config_path, work_dir_path)
 
 
