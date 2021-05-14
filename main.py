@@ -58,43 +58,12 @@ class Controller:
         print("Children killed, halting.")
         exit(1)
 
-    # region Computed Properties
-    @property
-    def phase_01_directory(self) -> str:
-        return naming_things.setup_directory(self.work_dir, 1)
+    def get_phase_directory(self, phase_no: int):
+        return naming_things.setup_directory(self.work_dir, phase_no)
 
-    @property
-    def phase_02_directory(self) -> str:
-        return naming_things.setup_directory(self.work_dir, 2)
-
-    @property
-    def phase_03_directory(self) -> str:
-        return naming_things.setup_directory(self.work_dir, 3)
-
-    @property
-    def phase_04_directory(self) -> str:
-        return naming_things.setup_directory(self.work_dir, 4)
-
-    @property
-    def phase_05_directory(self) -> str:
-        return naming_things.setup_directory(self.work_dir, 5)
-
-    @property
-    def phase_06_directory(self) -> str:
-        return naming_things.setup_directory(self.work_dir, 6)
-
-    @property
-    def phase_07_directory(self) -> str:
-        return naming_things.setup_directory(self.work_dir, 7)
-
-    @property
-    def phase_08_directory(self) -> str:
-        return naming_things.setup_directory(self.work_dir, 8)
-
-    # endregion
 
     def device_needs_flashing(self):
-        last_flash_mark = os.path.join(self.phase_01_directory, naming_things.LAST_FLASH_MARKER)
+        last_flash_mark = os.path.join(self.get_phase_directory(1), naming_things.LAST_FLASH_MARKER)
         identifying_information = self.firmware_path + self.config_path
         expected_digest = hashlib.sha256(identifying_information.encode('utf-8')).hexdigest()
 
@@ -114,85 +83,86 @@ class Controller:
         process.wait()
         del self.living_processes[args[1]]
 
-    def flash_firmware(self):
+    def flash_firmware_step01(self):
         self.run_phase([
             'python', './phases/01_preparation.py',
             self.firmware_path,
             self.config_path,
-            self.phase_01_directory,
+            self.get_phase_directory(1),
         ])
 
-    def record(self):
-        csv_reset(self.phase_02_directory)
+    def record_step02(self):
+        csv_reset(self.get_phase_directory(2))
         self.run_phase([
             'python', './phases/02_recording.py',
             self.config_path,
             '%d' % self.ram_region[0], '%d' % self.ram_region[1],
             '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
-            self.phase_02_directory,
-        ])
+            self.get_phase_directory(2),
+            ])
 
-    def analyze(self):
+    def analyze_step03(self):
         self.run_phase([
             'python', './phases/03_global_analysis.py',
-            self.phase_02_directory,
+            self.get_phase_directory(2),
             "%d" % self.ram_region[0],
             "%d" % self.epsilon,
-            self.phase_03_directory,
-        ])
+            self.get_phase_directory(3),
+            ])
 
-    def record_addr_size(self):
+    def record_peripherals_step04(self):
         self.run_phase([
-            'python', './phases/04_recording_addr_size.py',
-            self.phase_02_directory,
-            self.phase_03_directory,
+            'python', './phases/04_recording_peripherals.py',
+            self.get_phase_directory(2),
+            self.get_phase_directory(3),
             self.config_path,
             '%d' % self.ram_region[0], '%d' % self.ram_region[1],
             '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
-            self.phase_04_directory,
+            self.get_phase_directory(4),
             "--grace", '%d' % 32,
-        ])
+            ])
 
-    def record_peripherals(self):
+    def analyze_peripherals_step05(self):
         self.run_phase([
-            'python', './phases/05_recording_peripherals.py',
-            self.phase_02_directory,
-            self.phase_03_directory,
-            self.config_path,
-            '%d' % self.ram_region[0], '%d' % self.ram_region[1],
-            '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
-            self.phase_04_directory,
-            "--grace", '%d' % 32,
-        ])
-
-    def analyze_peripherals(self):
-        self.run_phase([
-            'python', './phases/06_peripheral_analysis.py',
-            self.phase_02_directory,
-            self.phase_03_directory,
-            self.phase_04_directory,
+            'python', './phases/05_peripheral_analysis.py',
+            self.get_phase_directory(2),
+            self.get_phase_directory(3),
+            self.get_phase_directory(4),
             "%d" % self.ram_region[0],
-            self.phase_05_directory,
-        ])
+            self.get_phase_directory(5),
+            ])
+
+    def record_addr_size_step06(self):
+        self.run_phase([
+            'python', './phases/06_recording_addr_size.py',
+            self.get_phase_directory(2),
+            self.get_phase_directory(3),
+            self.get_phase_directory(5),
+            self.config_path,
+            '%d' % self.ram_region[0], '%d' % self.ram_region[1],
+            '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
+            self.get_phase_directory(6),
+            "--grace", '%d' % 32,
+            ])
 
     def start(self, skip_to: int = 0, stop_after: int = 65535):
         if skip_to <= 1 <= stop_after and self.device_needs_flashing():
-            self.flash_firmware()
+            self.flash_firmware_step01()
 
         if skip_to <= 2 <= stop_after:
-            self.record()
+            self.record_step02()
 
         if skip_to <= 3 <= stop_after:
-            self.analyze()
+            self.analyze_step03()
 
         if skip_to <= 4 <= stop_after:
-            self.record_addr_size()
+            self.record_peripherals_step04()
 
         if skip_to <= 5 <= stop_after:
-            self.record_peripherals()
+            self.analyze_peripherals_step05()
 
         if skip_to <= 6 <= stop_after:
-            self.analyze_peripherals()
+            self.record_addr_size_step06()
 
 
 # noinspection DuplicatedCode

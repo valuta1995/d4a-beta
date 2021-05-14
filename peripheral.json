@@ -1,0 +1,53 @@
+{
+  "peripherals": [
+    {
+      "index": 0,
+      "start": 1073745636,
+      "size": 2,
+      "registers": [
+        1073745636
+      ],
+      "flight_recorder": [
+        {
+          "what": "start",
+          "step": 0,
+          "context": {
+            "message": "16:36:03"
+          }
+        },
+        {
+          "what": "dma",
+          "step": 205,
+          "context": {
+            "address": 188,
+            "old_value": 0,
+            "new_value": 97
+          }
+        },
+        {
+          "what": "dma",
+          "step": 229,
+          "context": {
+            "address": 188,
+            "old_value": 97,
+            "new_value": 113
+          }
+        },
+        {
+          "what": "grace end",
+          "step": 237,
+          "context": null
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "start": 1073743160,
+      "size": 4,
+      "registers": [
+        1073743160,
+        1073743164
+      ]
+    }
+  ]
+}

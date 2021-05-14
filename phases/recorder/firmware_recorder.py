@@ -211,9 +211,9 @@ class FirmwareRecorder:
 
     def dma_occurred(self) -> bool:
         last_item = self.history.peek()
-        if last_item.mem_delta is None:
+        if last_item.async_memory_deltas is None:
             raise Exception("Cannot check for DMA occurrences if mem_deltas are disabled")
-        elif len(last_item.mem_delta) != 0:
+        elif len(last_item.async_memory_deltas) != 0:
             # reduce aggressiveness if needed?
             # For example, at least two mem locations need changing
             return True
@@ -430,7 +430,7 @@ class FirmwareRecorder:
         return None
 
     def log_entry(self, entry: TraceEntry, ignores):
-        csv_append(self.work_dir, entry.index, entry.instr, entry.pc, entry.value, entry.addr, entry.mem_delta, ignores)
+        csv_append(self.work_dir, entry.index, entry.instr, entry.pc, entry.value, entry.addr, entry.async_memory_deltas, ignores)
 
     def poison(self):
         # stuff = random.randbytes(self.snapshot_region[1])

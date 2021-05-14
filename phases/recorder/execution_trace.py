@@ -26,6 +26,17 @@ def get_diffs(before_file: str, after_file: str) -> List[Tuple[int, Tuple[int, i
     return diffs
 
 
+class MemoryDelta:
+    address: int
+    anterior_value: int
+    posterior_value: int
+
+    def __init__(self, address: int, anterior_value: int, posterior_value: int):
+        self.address = address
+        self.anterior_value = anterior_value
+        self.posterior_value = posterior_value
+
+
 class TraceEntry:
 
     index: int
@@ -33,16 +44,20 @@ class TraceEntry:
     pc: int
     value: int
     addr: int
-    mem_delta: Optional[List[Tuple[int, Tuple[int, int]]]]
+    async_memory_deltas: Optional[List[MemoryDelta]]
 
     def __init__(self, instruction: str, pc: int, value: int, addr: int,
-                 mem_delta: Optional[List[Tuple[int, Tuple[int, int]]]]):
+                 mem_delta: Optional[List[MemoryDelta]]):
         self.index = -1
         self.instr = instruction
         self.pc = pc
         self.value = value
         self.addr = addr
-        self.mem_delta = mem_delta
+        self.async_memory_deltas = mem_delta
+
+
+    def to_json(self):
+        return json.dumps()
 
     @classmethod
     def from_dict(cls, entry_dict: Dict[str, any], memory_dumps_dir: Optional[str]) -> 'TraceEntry':
@@ -51,6 +66,7 @@ class TraceEntry:
         pc = int(entry_dict['pc'])
         value = int(entry_dict['value'])
         addr = int(entry_dict['address'])
+
         if isinstance(entry_dict['diffs'], list):
             num_deltas = len(entry_dict['diffs'])
         else:
@@ -94,7 +110,7 @@ class TraceEntry:
             keys[2]: instruction.pc,
             keys[3]: instruction.value,
             keys[4]: instruction.addr,
-            keys[5]: instruction.mem_delta,
+            keys[5]: instruction.async_memory_deltas,
         }
 
 

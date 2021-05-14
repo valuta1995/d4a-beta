@@ -22,14 +22,14 @@ class PeripheralAnalyzer:
         ft_length = len(ft_entries)
 
         print("Full trace")
-        etes_with_dma = [x for x in ft_entries if len(x.mem_delta) > 0]
+        etes_with_dma = [x for x in ft_entries if len(x.async_memory_deltas) > 0]
         for ete in etes_with_dma:
             print(ete.index)
         print("Done ---\n\n")
 
         for p in self.peripherals:
             print("Peripheral trace %d" % p['index'])
-            etes_with_dma = [x for x in p['trace'].entries if len(x.mem_delta) > 0]
+            etes_with_dma = [x for x in p['trace'].entries if len(x.async_memory_deltas) > 0]
             for ete in etes_with_dma:
                 print(ete.index)
             print("Done ---\n\n")

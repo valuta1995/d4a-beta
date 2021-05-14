@@ -12,7 +12,7 @@ from utilities import auto_int, naming_things, logging, parse_dma_info, csv_rese
 def same_instruction(i1, i2):
     return i1.index == i2.index and \
            i1.value == i2.value and \
-           len(i1.mem_delta) == len(i2.mem_delta) and \
+           len(i1.async_memory_deltas) == len(i2.async_memory_deltas) and \
            i1.addr == i2.addr and \
            i1.pc == i2.pc
 
@@ -65,7 +65,7 @@ class InstanceRunner:
     # noinspection DuplicatedCode
     def run_a_run(self, name, peripheral_address, new_value=0x1337):
         run_dir = os.path.join(self.work_dir, "run_%s/" % name)
-        return run_dir
+        # return run_dir
 
         if not os.path.exists(run_dir):
             os.mkdir(run_dir)
@@ -131,7 +131,7 @@ class InstanceRunner:
         new_trigger_te = self.get_new_entry(run_dir)
         if new_trigger_te is None:
             return None
-        mem_delta = new_trigger_te.mem_delta
+        mem_delta = new_trigger_te.async_memory_deltas
         if len(mem_delta) > 0:
             start_addr = min([x[0] for x in mem_delta]) + self.ram_area[0]
             if start_addr == test_value:
@@ -159,7 +159,7 @@ class InstanceRunner:
         if new_trigger_te is None:
             return False
 
-        mem_delta = new_trigger_te.mem_delta
+        mem_delta = new_trigger_te.async_memory_deltas
         if len(mem_delta) == test_value:
             return True
         return False
@@ -183,7 +183,7 @@ class InstanceRunner:
         new_trigger_te = self.get_new_entry(run_dir)
         if new_trigger_te is None:
             return False
-        if len(new_trigger_te.mem_delta) == 0:
+        if len(new_trigger_te.async_memory_deltas) == 0:
             return True
         return False
 
@@ -211,10 +211,10 @@ class InstanceRunner:
         # print(TraceEntry.to_dict(test_entry))
 
         # First do the easy one, figure out which of the potential addr-setting instructions is 'the one'
-        restart_connected_devices()
-        addr_entry = self.figure_out_addr()
-        print(TraceEntry.to_dict(addr_entry))
-
+        # restart_connected_devices()
+        # addr_entry = self.figure_out_addr()
+        # print(TraceEntry.to_dict(addr_entry))
+        # TODO check the run before 50 (one higher? maybe two?)
         restart_connected_devices()
         size_entry = self.figure_out_size()
         print(TraceEntry.to_dict(size_entry))
@@ -231,6 +231,7 @@ def main():
 
     parser.add_argument('recording_dir', type=str, help="Path to the directory with the full recording data.")
     parser.add_argument('analysis_dir', type=str, help="Path to the directory with the global analysis results.")
+    parser.add_argument('peripheral_dir', type=str, help="Path to the directory with the peripheral analysis results.")
 
     parser.add_argument('openocd_cfg', type=str, help="Path to the openocd configuration file for the DuT.")
 
@@ -255,6 +256,8 @@ def main():
     dma_info = parse_dma_info(dma_info_file)
 
     trace_path = os.path.join(args.recording_dir, logging.RECORDING_CSV)
+
+    peripheral_info = os.path.join(args.peripheral_dir, naming_things.PERIPHERAL_INFO_JSON)
 
     ram_area = (args.ram_start, args.ram_size)
     intercept_area = (args.intercept_start, args.intercept_size)

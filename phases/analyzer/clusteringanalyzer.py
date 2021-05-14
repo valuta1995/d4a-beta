@@ -43,7 +43,7 @@ class ClusteringAnalyzer:
                     "dma_region_size": None,
                 }, json_file, indent=4, sort_keys=True)
         else:
-            diffs_at_trigger = sorted(triggering_instruction.mem_delta)
+            diffs_at_trigger = sorted(triggering_instruction.async_memory_deltas)
 
             first_diff = diffs_at_trigger[0]
             first_diff_offset = first_diff[0]
@@ -113,11 +113,11 @@ class ClusteringAnalyzer:
         candidate: Optional[TraceEntry] = None
         for entry in self.entries.entries:
             if candidate is None:
-                if len(entry.mem_delta) <= 0:
+                if len(entry.async_memory_deltas) <= 0:
                     pass  # There was no candidate, there still is none
                 else:
                     candidate = entry
-            elif len(entry.mem_delta) > len(candidate.mem_delta):
+            elif len(entry.async_memory_deltas) > len(candidate.async_memory_deltas):
                 candidate = entry
         return candidate
 

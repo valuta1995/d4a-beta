@@ -23,7 +23,13 @@ def csv_reset(base_path: str):
 
 
 def csv_append(
-        base_path: str, index: int, instruction: str, pc: int, value: int, address: int, mem_delta: Optional[List[int]],
+        base_path: str,
+        index: int,
+        instruction: str,
+        pc: int,
+        value: int,
+        address: int,
+        mem_delta: Optional[List[int]],
         ignored_delta: Optional[List[int]]
 ):
     # TODO improve mem_delta to be like ignored_delta
