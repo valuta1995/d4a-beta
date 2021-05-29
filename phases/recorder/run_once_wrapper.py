@@ -3,7 +3,8 @@ import json
 import os
 from typing import Tuple
 
-from phases.recorder import FirmwareRecorder
+from phases.analyzer import DmaInfo
+from phases.recorder import FirmwareRecorder, ExecutionTrace
 from utilities import auto_int
 
 
@@ -24,7 +25,7 @@ def main():
     parser.add_argument('shim_value_json', type=str,
                         help="Json list of [start, end, value] triples.")
     parser.add_argument('original_trace_path', type=str,
-                        help="Path to the 'recording.csv'. ('None' to disable)")
+                        help="Path to the global execution trace or dma_info store'. ('None' to disable)")
     parser.add_argument('abort_grace_steps', type=int,
                         help="Grace steps recorded after abort (0=off, 5=default).")
     parser.add_argument('abort_after_deviation', type=bool,
@@ -65,11 +66,18 @@ def main():
     shimmed_regions = json.loads(args.shim_value_json)
     shimmed_regions = [(x[0], x[1], x[2]) for x in shimmed_regions]
 
-    original_trace_path = None if args.original_trace_path == "None" else args.original_trace_path
+    if args.original_trace_path is None:
+        original_trace = None
+    else:
+        try:
+            original_trace = ExecutionTrace.from_file(args.original_trace_path)
+        except TypeError:
+            dma_info = DmaInfo.from_file(args.original_trace_path)
+            original_trace = dma_info.execution_trace
 
     recorder = FirmwareRecorder(
         args.openocd_cfg, mem_ram, mem_peripheral, mocked_regions, shimmed_regions, args.work_dir,
-        original_trace_path=original_trace_path,
+        original_trace=original_trace,
         abort_grace_steps=args.abort_grace_steps,
         abort_after_deviation=args.abort_after_deviation,
         abort_after_dma=args.abort_after_dma,
@@ -80,9 +88,7 @@ def main():
     )
 
     if args.poison:
-        # TODO re-enable
-        # recorder.poison()
-        pass
+        recorder.poison()
 
     recorder.start()
 

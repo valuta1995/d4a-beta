@@ -13,7 +13,7 @@ def record_firmware(openocd_cfg: str, mem_ram: Tuple[int, int], mem_peripheral: 
     # TODO read configuration for hardcoded parameters
     recorder = FirmwareRecorder(
         openocd_cfg, mem_ram, mem_peripheral, mock_regions, shim_regions, work_dir,
-        original_trace_path=None,
+        original_trace=None,
         abort_grace_steps=grace_steps,
         abort_after_deviation=False,
         abort_after_dma=True,
@@ -43,7 +43,8 @@ def main():
 
     parser.add_argument('-t', '--timeout', default=30, type=int, help="Set the time-out for each step in seconds.")
     parser.add_argument('-s', '--max_steps', default=999, type=int, help="Limit the amount of steps that are executed.")
-    parser.add_argument('-g', '--grace_steps', default=50, type=int, help="Continue for a bit after an abort triggers.")
+    parser.add_argument('--grace', dest='abort_grace_steps', type=int, default=5,
+                        help="Keep recording this many steps after aborts.")
     parser.add_argument(
         '--solve_the_halting_problem', default=4, type=int,
         help="Abort if peripherals are accessed exactly the same way this many times in a row."
@@ -66,7 +67,7 @@ def main():
 
     timeout: int = args.timeout
     max_steps: int = args.max_steps
-    grace_steps: int = args.grace_steps
+    grace_steps: int = args.abort_grace_steps
     solve_the_halting_problem: int = args.solve_the_halting_problem
 
     restart_connected_devices()

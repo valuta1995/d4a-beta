@@ -1,3 +1,5 @@
+import os
+import timeit
 from typing import Tuple, Callable, Dict, Optional
 
 from avatar2 import OpenOCDTarget, Avatar, ARM_CORTEX_M3, Target
@@ -26,6 +28,7 @@ class Avatar2Handler:
 
         self.arch = arch
 
+        self.__avatar_output_directory = avatar_output_directory
         self.avatar = Avatar(arch=arch, output_directory=avatar_output_directory)
         self.target = self.avatar.add_target(OpenOCDTarget, openocd_script=cfg_path)
 
@@ -107,12 +110,24 @@ class Avatar2Handler:
         return mmf_addr
 
     def make_snapshot(self, mem_range: Tuple[int, int], path: str) -> bytes:
+
+        t_start = timeit.default_timer()
+
         command = "dump_image %s 0x%X 0x%X" % (path, mem_range[0], mem_range[1])
         openocd = self.target.protocols.monitor
         openocd.execute_command(command)
-        
+
+        t_done_ocd = timeit.default_timer()
+
         with open(path, mode='rb') as bin_file:
-            return bin_file.read()
+            bin_data = bin_file.read()
+
+        t_done_all = timeit.default_timer()
+        # TODO remove timekeeping when done with it.
+        with open(os.path.join(self.__avatar_output_directory, 'timer.txt'), mode='a') as timings:
+            timings.write("Snapshot time: %d, %d\n" % (t_done_ocd - t_start, t_done_all - t_done_ocd))
+
+        return bin_data
 
     def get_stack_frame_location(self, offset=0) -> int:
         sp = None

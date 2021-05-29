@@ -7,10 +7,10 @@ def auto_int(x):
     return int(x, 0)
 
 
-def parse_dma_info(dma_info_file):
-    with open(dma_info_file, mode='r') as json_file:
-        dma_info = json.load(json_file)
-    return dma_info
+# def parse_dma_info(dma_info_file):
+#     with open(dma_info_file, mode='r') as json_file:
+#         dma_info = json.load(json_file)
+#     return dma_info
 
 
 def try_for_int(input_text):

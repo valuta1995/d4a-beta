@@ -41,8 +41,11 @@ BEFORE_DUMP_NAME = "anterior.bin"
 AFTER_DUMP_NAME = "posterior.bin"
 EXIT_REASON_FILE = "exit_reason.txt"
 DMA_INFO_JSON = "dma_info.json"
+DMA_INFO_HR_JSON = "dma_info_hr.json"
 
-PERIPHERAL_CSV_NAME = "peripherals.csv"
+# PERIPHERAL_CSV_NAME = "peripherals.csv"
+PERIPHERAL_JSON_NAME = "peripherals.json"
+PERIPHERAL_JSON_HR_NAME = "peripherals_hr.json"
 
 
 # Exit reason strings
@@ -61,4 +64,7 @@ def setup_directory(base_path: str, phase_id: int) -> str:
         raise Exception("Unable to create directory for phase %d" % phase_id)
     return dir_path
 
+
+def create_peripheral_run_name(peripheral_base: int):
+    return "run_x%08X" % peripheral_base
 

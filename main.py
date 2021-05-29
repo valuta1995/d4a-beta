@@ -6,7 +6,9 @@ import subprocess
 from subprocess import Popen
 from typing import Tuple, Dict, List
 
-from utilities import auto_int, naming_things, csv_reset
+from utilities import auto_int, naming_things
+
+GRACE_STEPS = 32
 
 
 class Controller:
@@ -61,7 +63,6 @@ class Controller:
     def get_phase_directory(self, phase_no: int):
         return naming_things.setup_directory(self.work_dir, phase_no)
 
-
     def device_needs_flashing(self):
         last_flash_mark = os.path.join(self.get_phase_directory(1), naming_things.LAST_FLASH_MARKER)
         identifying_information = self.firmware_path + self.config_path
@@ -92,13 +93,13 @@ class Controller:
         ])
 
     def record_step02(self):
-        csv_reset(self.get_phase_directory(2))
         self.run_phase([
             'python', './phases/02_recording.py',
             self.config_path,
             '%d' % self.ram_region[0], '%d' % self.ram_region[1],
             '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
             self.get_phase_directory(2),
+            "--grace", '%d' % GRACE_STEPS,
             ])
 
     def analyze_step03(self):
@@ -113,13 +114,13 @@ class Controller:
     def record_peripherals_step04(self):
         self.run_phase([
             'python', './phases/04_recording_peripherals.py',
-            self.get_phase_directory(2),
+            # self.get_phase_directory(2),
             self.get_phase_directory(3),
             self.config_path,
             '%d' % self.ram_region[0], '%d' % self.ram_region[1],
             '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
             self.get_phase_directory(4),
-            "--grace", '%d' % 32,
+            "--grace", '%d' % GRACE_STEPS,
             ])
 
     def analyze_peripherals_step05(self):
@@ -135,14 +136,14 @@ class Controller:
     def record_addr_size_step06(self):
         self.run_phase([
             'python', './phases/06_recording_addr_size.py',
-            self.get_phase_directory(2),
+            # self.get_phase_directory(2),
             self.get_phase_directory(3),
             self.get_phase_directory(5),
             self.config_path,
             '%d' % self.ram_region[0], '%d' % self.ram_region[1],
             '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
             self.get_phase_directory(6),
-            "--grace", '%d' % 32,
+            "--grace", '%d' % GRACE_STEPS,
             ])
 
     def start(self, skip_to: int = 0, stop_after: int = 65535):
@@ -167,6 +168,7 @@ class Controller:
 
 # noinspection DuplicatedCode
 def main():
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument('firmware', type=str, help="Path to the firmware file (elf) used for analysis.")
@@ -213,7 +215,7 @@ def main():
         work_dir=work_dir,
         epsilon=epsilon,
     )
-    controller.start(skip_to=4, stop_after=4)
+    controller.start(skip_to=6, stop_after=6)
 
 
 # Press the green button in the gutter to run the script.
