@@ -13,14 +13,18 @@ from phases.recorder import TraceEntry, ExecutionTrace, trace_logging
 from phases.recorder.execution_trace import TraceEntryDiff
 from utilities import auto_int, naming_things, restart_connected_devices
 
-
-#
-# def same_instruction(i1, i2):
-#     return i1.index == i2.index and \
-#            i1.value == i2.value and \
-#            len(i1.async_memory_deltas) == len(i2.async_memory_deltas) and \
-#            i1.addr == i2.addr and \
-#            i1.pc == i2.pc
+LIST_OF_EXECUTION_AFFECTING_FLAGS = [
+    InfoFlag.UNKNOWN,
+    InfoFlag.TERMINATED_EARLY,
+    InfoFlag.TERMINATED_LATE,
+    InfoFlag.FAILED_TO_TERMINATE,
+    InfoFlag.TIMED_OUT,
+    InfoFlag.UNEXPECTED_NEW_DMA,
+    InfoFlag.MISSING_OLD_DMA,
+    InfoFlag.VALUE_CHANGED,
+    InfoFlag.IGNORED_DELTA_CHANGED,
+    InfoFlag.DESYNC,
+]
 
 
 def process_diff(diff: TraceEntryDiff) -> List[InfoFlag]:
@@ -175,11 +179,12 @@ class InstanceRunner:
     intercept_area: Tuple[int, int]
     work_dir: str
 
-    subprocesses: Dict[str, Popen]
-
     dma_info_path: str
 
-    def __init__(self, dma_info: DmaInfo, peripheral_info: PeripheralRow, openocd_cfg: str, grace_steps: int,
+    subprocesses: Dict[str, Popen]
+
+    def __init__(self, dma_info: DmaInfo, dma_info_path: str, peripheral_info: PeripheralRow, openocd_cfg: str,
+                 grace_steps: int,
                  limit_by_pc: bool, ram_area: Tuple[int, int], intercept_area: Tuple[int, int], work_dir: str):
 
         if dma_info.index_of_first_incidence == -1:
@@ -208,8 +213,7 @@ class InstanceRunner:
         signal.signal(signal.SIGINT, self.kill_subprocesses)
         signal.signal(signal.SIGTERM, self.kill_subprocesses)
 
-        self.dma_info_path = os.path.join(self.work_dir, naming_things.DMA_INFO_JSON)
-        DmaInfo.to_file(self.dma_info_path, self.dma_info)
+        self.dma_info_path = dma_info_path
 
     def kill_subprocesses(self, sig, frame):
         print("\tAttempting to kill sub-runs")
@@ -316,11 +320,12 @@ class InstanceRunner:
             raise Exception("Test run failed sanity check.")
         return trace
 
-    def figure_out_addr(self) -> Optional[Tuple[TraceEntry, TraceEntry]]:
+    def figure_out_addr(self, fast=True) -> List[Tuple[int, TraceEntry]]:
         """ Where the first returned value is the Trace Entry that was modified to test and the second is the
         resulting first incidence """
         already_processed_addresses: List[int] = []
         candidate: TraceEntry
+        valid_entries = []
         for candidate_index in reversed(self.set_base_candidates):
             candidate = self.dma_info.execution_trace.entries[candidate_index]
             run_addr = candidate.address
@@ -335,12 +340,19 @@ class InstanceRunner:
             run_dir = self.run_a_run(run_name, run_addr, new_value=test_value)
             new_first_incidence = find_first_incidence_with_dma_at_addr(run_dir, test_value)
             if new_first_incidence is not None:
-                return candidate, new_first_incidence
-        return None
+                valid_entries.append((candidate_index, candidate))
+                if fast:
+                    return valid_entries
+        return valid_entries
 
-    def figure_out_size(self) -> Optional[Tuple[TraceEntry, TraceEntry]]:
+    def figure_out_size(self, fast=True) -> List[Tuple[int, TraceEntry]]:
+        """
+        Fast true causes early return on first valid value
+        Fast false will process all possible options
+        """
         already_processed_addresses: List[int] = []
         candidate: TraceEntry
+        valid_entries = []
         for candidate_index in reversed(self.set_size_candidates):
             candidate = self.dma_info.execution_trace.entries[candidate_index]
             run_addr = candidate.address
@@ -359,8 +371,10 @@ class InstanceRunner:
             prior_size = self.dma_info.dma_region_size
             new_first_incidence = find_first_incidence_with_dma_of_size(run_dir, test_value, prior_size)
             if new_first_incidence is not None:
-                return candidate, new_first_incidence
-        return None
+                valid_entries.append((candidate_index, candidate))
+                if fast:
+                    return valid_entries
+        return valid_entries
 
     def figure_out_start(self) -> List[Tuple[int, TraceEntry]]:
         already_processed_addresses: List[int] = []
@@ -401,11 +415,25 @@ class InstanceRunner:
         self.populate_triggers()
         self.filter_out_irrelevant_peripherals()
 
-        addr_entry = self.process_addr()
-        size_entry = self.process_size()
-        start_entries = self.process_triggers()
+        verified_base_set_entries: List[Tuple[int, TraceEntry]] = self.process_addr()
+        verified_size_set_entries: List[Tuple[int, TraceEntry]] = self.process_size()
+        verified_triggering_entries: List[Tuple[int, TraceEntry]] = self.process_triggers()
 
-        # recap_results(addr_entry, size_entry, start_entries)
+        verified_bse_indices = [x for x, y in verified_base_set_entries]
+        self.dma_info.indices_of_set_base_instructions = verified_bse_indices
+        verified_sse_indices = [x for x, y in verified_size_set_entries]
+        self.dma_info.indices_of_set_size_instructions = verified_sse_indices
+
+        self.dma_info.indices_of_trigger_instructions = [
+            x for x, y in verified_triggering_entries
+            if x not in verified_bse_indices and x not in verified_sse_indices
+        ]
+
+        out_path = os.path.join(self.work_dir, naming_things.DMA_INFO_JSON)
+        DmaInfo.to_file(out_path, self.dma_info)
+
+        out_path = os.path.join(self.work_dir, naming_things.DMA_INFO_HR_JSON)
+        DmaInfo.to_file(out_path, self.dma_info, max_depth=DmaInfo.MAX_DEPTH_HR)
 
     def process_triggers(self):
         # Finally, even more unlikely try the triggering entries.
@@ -417,17 +445,25 @@ class InstanceRunner:
 
     def process_size(self):
         # While this will not always work, try the size entry
-        size_entry = self.figure_out_size()
+        verified_size_set_entries = self.figure_out_size()
         print("Size result:")
-        print(None if size_entry is None else [size_entry[0].__dict__, size_entry[1].__dict__])
-        return size_entry
+        if len(verified_size_set_entries) == 0:
+            print("\tNo results")
+        else:
+            for index, entry in verified_size_set_entries:
+                print("\t%d: %s", index, entry.__dict__)
+        return verified_size_set_entries
 
     def process_addr(self):
         # First do the easy one, figure out which of the potential addr-setting instructions is 'the one'
-        addr_entry = self.figure_out_addr()
+        verified_base_set_entries = self.figure_out_addr()
         print("Addr result:")
-        print(None if addr_entry is None else [addr_entry[0].__dict__, addr_entry[1].__dict__])
-        return addr_entry
+        if len(verified_base_set_entries) == 0:
+            print("\tNo results")
+        else:
+            for index, entry in verified_base_set_entries:
+                print("\t%d: %s", index, entry.__dict__)
+        return verified_base_set_entries
 
     def get_trace_diff(self, trace: ExecutionTrace) -> Dict[InfoFlag, bool]:
         accumulator: Dict[InfoFlag, bool] = dict()
@@ -458,19 +494,9 @@ class InstanceRunner:
         return accumulator
 
     def filter_out_irrelevant_peripherals(self):
+        # TODO refresh memory on why this is written the way it is written. It seems the wrong way around but it works?
         for peripheral in self.peripheral_info.peripherals:
-            if peripheral.has_one_of_flags([
-                InfoFlag.UNKNOWN,
-                InfoFlag.TERMINATED_EARLY,
-                InfoFlag.TERMINATED_LATE,
-                InfoFlag.FAILED_TO_TERMINATE,
-                InfoFlag.TIMED_OUT,
-                InfoFlag.UNEXPECTED_NEW_DMA,
-                InfoFlag.MISSING_OLD_DMA,
-                InfoFlag.VALUE_CHANGED,
-                InfoFlag.IGNORED_DELTA_CHANGED,
-                InfoFlag.DESYNC,
-            ]):
+            if peripheral.has_one_of_flags(LIST_OF_EXECUTION_AFFECTING_FLAGS):
                 # This peripheral has changed execution somehow
                 print("Dumping a peripheral")
                 len1 = len(self.set_base_candidates)
@@ -543,7 +569,8 @@ def main():
     ram_area = (args.ram_start, args.ram_size)
     intercept_area = (args.intercept_start, args.intercept_size)
 
-    runner: InstanceRunner = InstanceRunner(dma_info, peripheral_info, args.openocd_cfg, args.abort_grace_steps,
+    runner: InstanceRunner = InstanceRunner(dma_info, dma_info_file, peripheral_info, args.openocd_cfg,
+                                            args.abort_grace_steps,
                                             limit_by_pc, ram_area, intercept_area, args.work_dir)
     runner.start()
     print("Done runner")

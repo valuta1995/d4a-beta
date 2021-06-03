@@ -131,6 +131,15 @@ class Peripheral(Storable):
                 return False
         return True
 
+    def __repr__(self):
+        if self.__execution_trace is None:
+            return "{0x%08X, 0x%X, %d}" % (self.start, self.size, len(self.registers))
+        else:
+            return "{0x%08X, 0x%X, %d, [flags: %s]}" % (
+                self.start, self.size, len(self.registers),
+                ", ".join([InfoFlag(k).name for k, v in self.__flags.items() if v])
+            )
+
 
 class PeripheralRow(Storable):
     HUMAN_READABLE_DEPTH = 5

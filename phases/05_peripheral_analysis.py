@@ -151,6 +151,10 @@ def main():
     dma_info_path = os.path.join(args.analysis_dir, naming_things.DMA_INFO_JSON)
     global_dma_info: DmaInfo = DmaInfo.from_file(dma_info_path)
 
+    if global_dma_info.index_of_first_incidence == -1:
+        print("No dma found in earlier step, abandoning this step.")
+        return
+
     peripheral_path = os.path.join(args.analysis_dir, naming_things.PERIPHERAL_JSON_NAME)
     peripheral_row: PeripheralRow = PeripheralRow.from_file(peripheral_path)
 

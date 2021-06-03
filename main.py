@@ -100,7 +100,7 @@ class Controller:
             '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
             self.get_phase_directory(2),
             "--grace", '%d' % GRACE_STEPS,
-            ])
+        ])
 
     def analyze_step03(self):
         self.run_phase([
@@ -109,7 +109,7 @@ class Controller:
             "%d" % self.ram_region[0],
             "%d" % self.epsilon,
             self.get_phase_directory(3),
-            ])
+        ])
 
     def record_peripherals_step04(self):
         self.run_phase([
@@ -121,7 +121,7 @@ class Controller:
             '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
             self.get_phase_directory(4),
             "--grace", '%d' % GRACE_STEPS,
-            ])
+        ])
 
     def analyze_peripherals_step05(self):
         self.run_phase([
@@ -131,7 +131,7 @@ class Controller:
             self.get_phase_directory(4),
             "%d" % self.ram_region[0],
             self.get_phase_directory(5),
-            ])
+        ])
 
     def record_addr_size_step06(self):
         self.run_phase([
@@ -144,9 +144,36 @@ class Controller:
             '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
             self.get_phase_directory(6),
             "--grace", '%d' % GRACE_STEPS,
-            ])
+        ])
 
-    def start(self, skip_to: int = 0, stop_after: int = 65535):
+    def summarize_step07(self):
+        self.run_phase([
+            'python', './phases/07_summarize.py',
+            self.get_phase_directory(1),
+            self.get_phase_directory(2),
+            self.get_phase_directory(3),
+            self.get_phase_directory(4),
+            self.get_phase_directory(5),
+            self.get_phase_directory(6),
+            self.firmware_path,
+            self.config_path,
+            '%d' % self.ram_region[0], '%d' % self.ram_region[1],
+            '%d' % self.peripheral_region[0], '%d' % self.peripheral_region[1],
+            self.get_phase_directory(7),
+            "--grace", '%d' % GRACE_STEPS,
+        ])
+
+    def start(self, skip_to: int = 0, stop_after: int = -1):
+        with open(os.path.join(self.get_phase_directory(7), "mark"), mode='w') as mark:
+            mark.write("started run")
+
+        if skip_to > stop_after:
+            if stop_after == -1:
+                stop_after = len(naming_things.PHASE_NAMES)
+            else:
+                print("Warning, stop < start, assuming stop == start.")
+                stop_after = skip_to
+
         if skip_to <= 1 <= stop_after and self.device_needs_flashing():
             self.flash_firmware_step01()
 
@@ -165,10 +192,12 @@ class Controller:
         if skip_to <= 6 <= stop_after:
             self.record_addr_size_step06()
 
+        if skip_to <= 7 <= stop_after:
+            self.summarize_step07()
+
 
 # noinspection DuplicatedCode
 def main():
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument('firmware', type=str, help="Path to the firmware file (elf) used for analysis.")
@@ -182,6 +211,9 @@ def main():
 
     parser.add_argument('-d', '--working-directory', dest="work_dir", type=str, default='./D4A2')
     parser.add_argument('-e', '--set-epsilon', dest="epsilon", type=auto_int, default=0x300)
+
+    parser.add_argument('-s', '--start', dest="start_at", type=int, default=0)
+    parser.add_argument('-t', '--stop', dest="stop_after", type=int, default=-1)
 
     args = parser.parse_args()
 
@@ -215,9 +247,13 @@ def main():
         work_dir=work_dir,
         epsilon=epsilon,
     )
-    controller.start(skip_to=6, stop_after=6)
+    controller.start(skip_to=args.start_at, stop_after=args.stop_after)
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     main()
+
+# Step 7 csv output list:
+# end_time, device, firmware, taken_time, dma_presence, dma_base, dma_size,
+#   base_instructions, size_instructions, trigger_instructions, report_path

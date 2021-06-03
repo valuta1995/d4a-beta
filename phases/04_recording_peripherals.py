@@ -63,6 +63,9 @@ def main():
 
     dma_info_file = os.path.join(args.analysis_dir, naming_things.DMA_INFO_JSON)
     dma_info: DmaInfo = DmaInfo.from_file(dma_info_file)
+    if dma_info.index_of_first_incidence == -1:
+        print("No DMA found, abandoning this step.")
+        return
 
     instruction_with_first_incidence: TraceEntry = dma_info.execution_trace.entries[dma_info.index_of_first_incidence]
     first_incidence_pc = instruction_with_first_incidence.pc

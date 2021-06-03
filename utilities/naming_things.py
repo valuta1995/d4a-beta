@@ -14,10 +14,8 @@ PHASE_05_PERIPHERAL_ANALYSIS = \
     "05_peripheral_analysis"
 PHASE_06_ADDR_SIZE_RECORDING = \
     "06_recording_addr_size"
-PHASE_07_REGISTER_RECORDING = \
-    "07_register_recording"
-PHASE_08_REGISTER_ANALYSIS = \
-    "08_register_analysis"
+PHASE_07_SUMMARIZE = \
+    "07_summarize"
 
 PHASE_NAMES: List[str] = [
     "INVALID_OPTION",
@@ -27,8 +25,7 @@ PHASE_NAMES: List[str] = [
     PHASE_04_PERIPHERAL_RECORDING,
     PHASE_05_PERIPHERAL_ANALYSIS,
     PHASE_06_ADDR_SIZE_RECORDING,
-    PHASE_07_REGISTER_RECORDING,
-    PHASE_08_REGISTER_ANALYSIS
+    PHASE_07_SUMMARIZE,
 ]
 
 MEMORY_SNAPSHOT_DIRECTORY = "snapshots"
@@ -42,6 +39,8 @@ AFTER_DUMP_NAME = "posterior.bin"
 EXIT_REASON_FILE = "exit_reason.txt"
 DMA_INFO_JSON = "dma_info.json"
 DMA_INFO_HR_JSON = "dma_info_hr.json"
+REPORT_MD = "report.md"
+CSV_LINE_FILE_NAME = "single_csv_line.csv"
 
 # PERIPHERAL_CSV_NAME = "peripherals.csv"
 PERIPHERAL_JSON_NAME = "peripherals.json"
@@ -67,4 +66,3 @@ def setup_directory(base_path: str, phase_id: int) -> str:
 
 def create_peripheral_run_name(peripheral_base: int):
     return "run_x%08X" % peripheral_base
-
