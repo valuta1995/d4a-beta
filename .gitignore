@@ -2,3 +2,5 @@
 D4A2
 /testrun/
 /test_resources/psoc_extra/
+/test_resources/bundles/*/
+/sandbox.py
