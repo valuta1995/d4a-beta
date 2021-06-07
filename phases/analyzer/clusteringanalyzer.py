@@ -129,21 +129,31 @@ class ClusteringAnalyzer:
             cluster_addresses_matrix = big_x[row_ix, 0]
             cluster_addresses = cluster_addresses_matrix[0]
             registers = unique(sorted(cluster_addresses))
-            lo_reg = registers[0]
-            hi_reg = registers[-1]
-            peripheral_size = hi_reg - lo_reg
-            peripheral_p2_sz = 1 << int(peripheral_size - 1).bit_length()
-            peripheral_start = (lo_reg // peripheral_p2_sz) * peripheral_p2_sz
 
-            if not isinstance(peripheral_start, int):
-                peripheral_start = int(peripheral_start)
-            if not isinstance(peripheral_p2_sz, int):
-                peripheral_p2_sz = int(peripheral_p2_sz)
-            peripheral: Peripheral = Peripheral(peripheral_start, peripheral_p2_sz)
-            for reg in registers:
-                peripheral.append_register(reg)
+            if cluster_name == -1:
+                # This is a list of all non-clustered registers.
+                for register in registers:
+                    peripheral: Peripheral = Peripheral(int(register), int(1))
+                    peripheral.append_register(int(register))
+                    peripherals.append(peripheral)
 
-            peripherals.append(peripheral)
+            else:
+                # This is a regular cluster of registers
+                lo_reg = registers[0]
+                hi_reg = registers[-1]
+                peripheral_size = hi_reg - lo_reg
+                peripheral_p2_sz = 1 << int(peripheral_size - 1).bit_length()
+                peripheral_start = (lo_reg // peripheral_p2_sz) * peripheral_p2_sz
+
+                if not isinstance(peripheral_start, int):
+                    peripheral_start = int(peripheral_start)
+                if not isinstance(peripheral_p2_sz, int):
+                    peripheral_p2_sz = int(peripheral_p2_sz)
+                peripheral: Peripheral = Peripheral(peripheral_start, peripheral_p2_sz)
+                for reg in registers:
+                    peripheral.append_register(reg)
+
+                peripherals.append(peripheral)
 
         return peripherals
 

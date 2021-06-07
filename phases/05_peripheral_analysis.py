@@ -151,10 +151,6 @@ def main():
     dma_info_path = os.path.join(args.analysis_dir, naming_things.DMA_INFO_JSON)
     global_dma_info: DmaInfo = DmaInfo.from_file(dma_info_path)
 
-    if global_dma_info.index_of_first_incidence == -1:
-        print("No dma found in earlier step, abandoning this step.")
-        return
-
     peripheral_path = os.path.join(args.analysis_dir, naming_things.PERIPHERAL_JSON_NAME)
     peripheral_row: PeripheralRow = PeripheralRow.from_file(peripheral_path)
 
@@ -163,6 +159,12 @@ def main():
 
     if not os.path.isdir(args.work_dir):
         raise Exception("%s is not a directory." % args.work_dir)
+
+    if global_dma_info.index_of_first_incidence == -1:
+        peripheral_out_file = os.path.join(args.work_dir, naming_things.PERIPHERAL_JSON_NAME)
+        PeripheralRow.to_file(peripheral_out_file, peripheral_row)
+        print("No dma found in earlier step, abandoning this step.")
+        return
 
     peripheral: Peripheral
     for peripheral in peripheral_row.peripherals:

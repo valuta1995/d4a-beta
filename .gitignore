@@ -4,3 +4,4 @@ D4A2
 /test_resources/psoc_extra/
 /test_resources/bundles/*/
 /sandbox.py
+/test_resources/dice_reconf/

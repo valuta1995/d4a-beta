@@ -298,8 +298,13 @@ class FirmwareRecorder:
         faulting_pc = context['pc']
 
         # Parse the instruction that caused the fault
-        effect = self.a2h.get_instruction_effect(faulting_pc)
-        accessed_addr = effect.compute_memory_address(self.a2h.target, context)
+        effect, instruction = self.a2h.get_instruction_effect(faulting_pc)
+        try:
+            accessed_addr = effect.compute_memory_address(self.a2h.target, context)
+        except KeyError as err:
+            print(err)
+            print("Couldn't process a register...")
+            raise KeyError("With %s" % instruction)
         if accessed_addr != faulting_addr:
             raise Exception("The instruction's computed accessed address does not match the fault information.")
 

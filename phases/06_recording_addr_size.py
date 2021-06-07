@@ -21,8 +21,8 @@ LIST_OF_EXECUTION_AFFECTING_FLAGS = [
     InfoFlag.TIMED_OUT,
     InfoFlag.UNEXPECTED_NEW_DMA,
     InfoFlag.MISSING_OLD_DMA,
-    InfoFlag.VALUE_CHANGED,
-    InfoFlag.IGNORED_DELTA_CHANGED,
+    # InfoFlag.VALUE_CHANGED,
+    # InfoFlag.IGNORED_DELTA_CHANGED,
     InfoFlag.DESYNC,
 ]
 
@@ -313,6 +313,8 @@ class InstanceRunner:
 
         fail = False
         for flag, state in diff.items():
+            if flag == InfoFlag.IGNORED_DELTA_CHANGED:
+                continue
             if state:
                 print("Test run Failure caused by %s" % flag.name)
                 fail = True
@@ -334,7 +336,7 @@ class InstanceRunner:
 
             already_processed_addresses.append(run_addr)
 
-            run_name = "set_addr_x%08X" % candidate.address
+            run_name = "set_addr_x%08X_%d" % (candidate.address, candidate_index)
             test_value = candidate.value + 0x4
 
             run_dir = self.run_a_run(run_name, run_addr, new_value=test_value)
@@ -361,7 +363,7 @@ class InstanceRunner:
 
             already_processed_addresses.append(run_addr)
 
-            run_name = "set_size_x%08X" % candidate.address
+            run_name = "set_size_x%08X_%d" % (candidate.address, candidate_index)
             if -64 <= candidate.value <= 64:
                 test_value = candidate.value * 2
             else:
@@ -369,7 +371,11 @@ class InstanceRunner:
 
             run_dir = self.run_a_run(run_name, run_addr, new_value=test_value)
             prior_size = self.dma_info.dma_region_size
-            new_first_incidence = find_first_incidence_with_dma_of_size(run_dir, test_value, prior_size)
+            factor = prior_size / candidate.value
+
+            new_first_incidence = find_first_incidence_with_dma_of_size(
+                run_dir, test_value * factor, candidate.value * factor
+            )
             if new_first_incidence is not None:
                 valid_entries.append((candidate_index, candidate))
                 if fast:
@@ -392,13 +398,13 @@ class InstanceRunner:
             already_processed_addresses.append(candidate.address)
 
             print(candidate_index)
-            if self.process_single_start_candidate(candidate):
+            if self.process_single_start_candidate(candidate_index, candidate):
                 results.append((candidate_index, candidate))
 
         return results
 
-    def process_single_start_candidate(self, candidate):
-        run_name = "test_start_x%08X" % candidate.address
+    def process_single_start_candidate(self, candidate_index, candidate):
+        run_name = "test_start_x%08X_%d" % (candidate.address, candidate_index)
 
         # test_value = candidate.value & (~0x1)
         run_dir = self.run_a_run(run_name, candidate.address, new_value=None)
@@ -408,11 +414,12 @@ class InstanceRunner:
 
     def start(self):
         # Perform a clean run to check for system sanity
-        trace = self.figure_out_test()
-        print("Test result:")
-        print(None if trace is None else trace)
+        # trace = self.figure_out_test()
+        # print("Test result:")
+        # print(None if trace is None else trace)
 
         self.populate_triggers()
+
         self.filter_out_irrelevant_peripherals()
 
         verified_base_set_entries: List[Tuple[int, TraceEntry]] = self.process_addr()
@@ -497,7 +504,10 @@ class InstanceRunner:
         # TODO refresh memory on why this is written the way it is written. It seems the wrong way around but it works?
         for peripheral in self.peripheral_info.peripherals:
             if peripheral.has_one_of_flags(LIST_OF_EXECUTION_AFFECTING_FLAGS):
-                # This peripheral has changed execution somehow
+                # This peripheral has changed execution somehow and IS interesting
+                pass
+            else:
+                # This peripheral has not changed execution, and as such is not interesting.
                 print("Dumping a peripheral")
                 len1 = len(self.set_base_candidates)
                 self.set_base_candidates = [

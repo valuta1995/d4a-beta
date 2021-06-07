@@ -3,26 +3,58 @@ from typing import Dict
 from avatar2 import Target
 from capstone import CsInsn
 from capstone.arm_const import ARM_INS_STR, ARM_INS_LDR, ARM_INS_STRB, ARM_INS_LDRB, ARM_OP_REG, ARM_OP_MEM, \
-    ARM_SFT_LSL, ARM_SFT_INVALID
+    ARM_SFT_LSL, ARM_SFT_INVALID, ARM_INS_STRH, ARM_INS_LDRH
+
+RENAME = {
+    "ip": "r12",
+    "fp": "r11",
+
+    "sl": "r10",
+    "sb": "r9",
+    "v7": "r10",
+    "v6": "r9",
+
+    "v5": "r8",
+    "v4": "r7",
+    "v3": "r6",
+    "v2": "r5",
+    "v1": "r4",
+
+    "a4": "r3",
+    "a3": "r2",
+    "a2": "r1",
+    "a1": "r0",
+}
+
+
+def clean_reg_name(reg_name):
+    if reg_name in RENAME:
+        reg_name = RENAME[reg_name]
+    return reg_name
 
 
 def load_reg_value(reg_name: str, target: Target, context: Dict[str, int]) -> int:
+    # TODO remove when Avatar2 supports 'ip' name.
+    reg_name = clean_reg_name(reg_name)
     if reg_name in context:
         return context[reg_name]
     else:
         return target.read_register(reg_name)
 
 
-def store_reg_value(reg: str, target: Target, context: Dict[str, int], value: int) -> None:
-    if reg in context:
-        context[reg] = value
+def store_reg_value(reg_name: str, target: Target, context: Dict[str, int], value: int) -> None:
+    reg_name = clean_reg_name(reg_name)
+    if reg_name in context:
+        context[reg_name] = value
     else:
-        target.write_register(reg, value)
+        target.write_register(reg_name, value)
 
 
 def get_instruction_size(instruction: CsInsn):
     if instruction.id in [ARM_INS_STR, ARM_INS_LDR]:
         size = 4
+    elif instruction.id in [ARM_INS_STRH, ARM_INS_LDRH]:
+        size = 2
     elif instruction.id in [ARM_INS_STRB, ARM_INS_LDRB]:
         size = 1
     else:
@@ -32,9 +64,9 @@ def get_instruction_size(instruction: CsInsn):
 
 
 def get_instruction_mode(instruction: CsInsn):
-    if instruction.id in [ARM_INS_STR, ARM_INS_STRB]:
+    if instruction.id in [ARM_INS_STR, ARM_INS_STRH, ARM_INS_STRB]:
         mode = "str"
-    elif instruction.id in [ARM_INS_LDR, ARM_INS_LDRB]:
+    elif instruction.id in [ARM_INS_LDR, ARM_INS_LDRH, ARM_INS_LDRB]:
         mode = "ldr"
     else:
         raise Exception("Unsupported instruction.")

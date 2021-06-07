@@ -173,13 +173,14 @@ class Avatar2Handler:
         values = [context[reg] for reg in self.arch.REGISTERS_ON_STACK]
         self.target.write_memory(stack_frame_location, 4, values, 8)
 
-    def get_instruction_effect(self, addr: int) -> InstructionEffect:
+    def get_instruction_effect(self, addr: int) -> Tuple[InstructionEffect, CsInsn]:
         instruction = self._disassemble_one(addr)
         effect = InstructionEffect.from_cs_insn(instruction)
-        return effect
+        return effect, instruction
 
     def continue_and_wait(self, timeout: Optional[int] = None):
         # TODO check if timeout needs to be handled here?
+        # timeout = None
         if timeout is not None:
             # print("\n\n\t\tTHIS FUNCTIONALITY IS UNTESTED, PLEASE REPORT BUGS\n\n\n")
             with TimeOut(timeout):

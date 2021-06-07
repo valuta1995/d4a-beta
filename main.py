@@ -247,7 +247,8 @@ def main():
         work_dir=work_dir,
         epsilon=epsilon,
     )
-    controller.start(skip_to=args.start_at, stop_after=args.stop_after)
+    # controller.start(skip_to=args.start_at, stop_after=args.stop_after)
+    controller.start(skip_to=6, stop_after=args.stop_after)
 
 
 # Press the green button in the gutter to run the script.
