@@ -277,6 +277,7 @@ class Concludermancy:
 
                 f.write("### Otherwise affecting instructions\n")
                 for e_idx in self.dma_info.indices_of_trigger_instructions:
+                    e = self.dma_info.execution_trace.entries[e_idx]
                     if e_idx in blocked:
                         f.write(" - _%s_\t (repeated entry)\n" % e)
                     else:
