@@ -54,9 +54,36 @@ class ClusteringAnalyzer:
         self.dma_info.index_of_first_incidence = triggering_instruction_index
         self.dma_info.indices_of_trigger_instructions = [triggering_instruction_index]
 
-        sorted_delta_addresses = sorted([x.address for x in triggering_instruction.async_deltas])
-        first_diff_address = sorted_delta_addresses[0]
+        list_of_deltas = triggering_instruction.async_deltas
+        list_of_delta_addresses = [x.address for x in list_of_deltas]
 
+        lb = min(list_of_delta_addresses)
+        ub = max(list_of_delta_addresses)
+
+        # Look up to n instructions ahead and expand the range to catch more slow moving DMA traffic.
+        for i in range(10):
+            next_instruction_index = triggering_instruction_index + 1
+            if next_instruction_index >= len(self.execution_trace.entries):
+                break
+            next_instruction = self.execution_trace.entries[next_instruction_index]
+
+            overlap = False
+            next_instruction_delta_addresses = []
+            for delta in next_instruction.async_deltas:
+                address = delta.address
+                next_instruction_delta_addresses.append(address)
+                if lb <= address <= ub:
+                    overlap = True
+
+            if overlap:
+                list_of_delta_addresses += next_instruction_delta_addresses
+            else:
+                break
+
+            lb = min(list_of_delta_addresses)
+            ub = max(list_of_delta_addresses)
+
+        first_diff_address = lb
         self.dma_info.dma_region_base = first_diff_address
 
         set_base_candidates, set_base_indices = self.find_set_base_candidates(first_diff_address,
@@ -66,14 +93,14 @@ class ClusteringAnalyzer:
         else:
             self.dma_info.indices_of_set_base_instructions = set_base_indices
 
-        last_diff_address = sorted_delta_addresses[-1]
+        last_diff_address = ub
 
         dma_region_size = 1 + (last_diff_address - first_diff_address)
         self.dma_info.dma_region_size = dma_region_size
         set_size_candidates, set_size_indices = self.find_set_size_instruction(dma_region_size,
                                                                                triggering_instruction_index)
         if len(set_size_candidates) == 0:
-            raise Exception("Unable to find instruction responsible for the base.")
+            raise Exception("Unable to find instruction responsible for the size.")
         else:
             self.dma_info.indices_of_set_size_instructions = set_size_indices
 
@@ -169,8 +196,13 @@ class ClusteringAnalyzer:
 
     def find_set_base_candidates(self, dma_region_base: int, index_limit: int) -> Tuple[List[TraceEntry], List[int]]:
         entry: TraceEntry
+
         hard_matches: List[TraceEntry] = []
         hard_match_indices: List[int] = []
+
+        soft_matches: List[TraceEntry] = []
+        soft_match_indices: List[int] = []
+
         for i in range(len(self.execution_trace.entries)):
             # Only instructions before the initial occurrence of DMA can affect it
             if i > index_limit:
@@ -178,15 +210,29 @@ class ClusteringAnalyzer:
 
             entry: TraceEntry = self.execution_trace.entries[i]
 
-            # TODO soft match heuristics
             # TODO proxied locations
             if entry.value == dma_region_base:
                 hard_matches.append(entry)
                 hard_match_indices.append(i)
-        return hard_matches, hard_match_indices
+            elif abs(entry.value - dma_region_base) <= 2:
+                soft_matches.append(entry)
+                soft_match_indices.append(i)
+
+        if len(hard_matches) > 0:
+            return hard_matches, hard_match_indices
+        elif len(soft_matches) > 0:
+            return soft_matches, soft_match_indices
+        else:
+            return [], []
 
     def find_set_size_instruction(self, dma_region_size: int, index_limit: int) -> Tuple[List[TraceEntry], List[int]]:
-        size_candidates = [dma_region_size, dma_region_size // 2, dma_region_size // 4]
+        size_candidates = [
+            dma_region_size,  # Actual size
+            dma_region_size // 2,  # Divide by 2.
+            dma_region_size // 4,  # Divide by 4
+            (dma_region_size + 1) // 2,  # Round up to the nearest multiple of 2, divide by 2.
+            (dma_region_size + 3) // 4,  # Round up to the nearest multiple of 4, divide by 4
+        ]
         size_candidates = [x for x in size_candidates if x > 0]
 
         entry: TraceEntry
