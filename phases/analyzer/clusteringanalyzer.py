@@ -14,7 +14,15 @@ def homogenize_size_align(peripherals):
     return peripherals
 
 
+def has_value_between(list_of_numbers: List[int], lb: int, ub: int):
+    for number in list_of_numbers:
+        if lb <= number <= ub:
+            return True
+    return False
+
+
 def static_find_first_dma_incidence(trace):
+    # First find the largest entry.
     candidate: Optional[TraceEntry] = None
     for entry in trace.entries:
         if candidate is None:
@@ -24,6 +32,32 @@ def static_find_first_dma_incidence(trace):
                 candidate = entry
         elif len(entry.async_deltas) > len(candidate.async_deltas):
             candidate = entry
+
+    if candidate is None:
+        return None
+
+    # Then find the first entry that has the same range as this entry.
+    reg_addresses = [x.address for x in candidate.async_deltas]
+    lb = min(reg_addresses)
+    ub = max(reg_addresses)
+
+    rough_size = ub - lb
+
+    candidate_index = trace.entries.index(candidate)
+    for entry_index in range(candidate_index - 1, 0 - 1, -1):
+        entry = trace.entries[entry_index]
+        if has_value_between([x.address for x in entry.async_deltas], lb, ub):
+            reg_addresses = [x.address for x in entry.async_deltas]
+            new_lb = min(reg_addresses)
+            new_ub = max(reg_addresses)
+            if new_ub - new_lb < rough_size / 2:
+                # The new entry is so much smaller it may be a smaller instance of DMA inside of the old range, ignore.
+                continue
+            else:
+                # The new entry is a bit smaller, but within limits, so this is an earlier instance of that entry.
+                candidate = entry
+                lb = min(lb, new_lb)
+                ub = max(ub, new_ub)
     return candidate
 
 
@@ -92,6 +126,9 @@ class ClusteringAnalyzer:
             raise Exception("Unable to find instruction responsible for the base.")
         else:
             self.dma_info.indices_of_set_base_instructions = set_base_indices
+
+        if set_base_candidates[0].value != first_diff_address:
+            self.dma_info.dma_region_base = set_base_candidates[0].value
 
         last_diff_address = ub
 
