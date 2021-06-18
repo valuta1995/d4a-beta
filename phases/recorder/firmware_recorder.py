@@ -414,8 +414,20 @@ class FirmwareRecorder:
                 except TimeoutError:
                     self.stopped = True
                     self.append_exit_reason("Step took more than %d seconds." % self.abort_per_step_timeout)
+                if self.a2h.dispatcher.count_skipped_breakpoints > 10 * self.abort_per_step_timeout:
+                    self.stopped = True
+                    self.append_exit_reason(
+                        "Irrelevant hard-fault happened more than 10*timout (%d) consecutive times." %
+                        self.abort_per_step_timeout
+                    )
             else:
                 self.a2h.continue_and_wait()
+            if self.a2h.dispatcher.count_skipped_breakpoints > self.abort_after_iterations:
+                self.stopped = True
+                self.append_exit_reason(
+                    "Irrelevant hard-fault happened more than max_steps (%d) consecutive times." %
+                    self.abort_after_iterations
+                )
 
         self.a2h.target.log.info("Firmware_recorder.py:start() has finished.")
         self.logger.finalize()
