@@ -215,6 +215,8 @@ class InstanceRunner:
 
         self.dma_info_path = dma_info_path
 
+        self.always_no = False
+
     def kill_subprocesses(self, sig, frame):
         print("\tAttempting to kill sub-runs")
         process: Popen
@@ -238,6 +240,24 @@ class InstanceRunner:
 
         if not os.path.exists(run_dir):
             os.mkdir(run_dir)
+        else:
+            # Path already existed
+            chosen = False if self.always_no else None
+            while chosen is None:
+                print("Run directory: %s" % run_dir)
+                choice = input("Path already exists, overwrite? [(y)es, (n)o, (N)ever]")
+                if choice == "y":
+                    chosen = True
+                elif choice == "n":
+                    chosen = False
+                elif choice == "N":
+                    chosen = False
+                    self.always_no = True
+
+            if not chosen:
+                return run_dir
+            else:
+                print("Continuing with run, overwriting old one.")
 
         if peripheral_address % 4 == 0:
             size = 4
